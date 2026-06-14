@@ -1,10 +1,15 @@
 import streamlit as st
-from groq import Groq
+from openai import OpenAI
 from duckduckgo_search import DDGS
 
-# API bağlantısı
-api_key = st.secrets["GROQ_API_KEY"]
-client = Groq(api_key=api_key)
+# GitHub şifreni gizli ayarlardan çekiyoruz
+token = st.secrets["GITHUB_TOKEN"]
+
+# GitHub'ın yapay zeka sunucusuna bağlanıyoruz
+client = OpenAI(
+    base_url="https://models.inference.ai.azure.com",
+    api_key=token,
+)
 
 st.title("Bizim Yapay Zeka Arayüzü 🚀")
 
@@ -24,21 +29,21 @@ if st.button("Gönder") and sorgu:
             kaynak_metin = "Arama yapılamadı veya internet bağlantı sorunu oluştu."
 
         # 2. Arama sonuçlarını modele gönder
-        prompt = f"Aşağıdaki internet arama sonuçlarını kullanarak kullanıcıya cevap ver. Eğer sonuçlar alakasızsa veya boşsa, kendi bilgilerinle cevapla.\n\nArama Sonuçları:\n{kaynak_metin}\nSoru: {sorgu}"
+        prompt = f"Aşağıdaki internet arama sonuçlarını kullanarak kullanıcıya cevap ver. Eğer sonuçlar alakasızsa kendi bilgilerinle cevapla.\n\nArama Sonuçları:\n{kaynak_metin}\nSoru: {sorgu}"
         
-        chat_completion = client.chat.completions.create(
+        response = client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "Sen yardımcı bir asistansın. Sana sağlanan güncel internet verilerini kullanarak mantıklı ve doğru cevaplar üretirsin."},
+                {"role": "system", "content": "Sen yardımcı bir asistansın. Sana sağlanan verileri kullanarak cevap üretirsin."},
                 {"role": "user", "content": prompt}
             ],
-            model="mixtral-8x7b-32768",
+            model="Mistral-Nemo", # GitHub'daki Mistral modeli
             temperature=0.5,
         )
-        cevap = chat_completion.choices[0].message.content
+        cevap = response.choices[0].message.content
         
         # 3. Cevabı ekrana yazdır
         st.write(cevap)
         
-        # 4. Hangi sitelere baktığını da alt tarafta göster
+        # 4. Kaynakları göster
         with st.expander("Kullanılan İnternet Kaynakları"):
             st.write(kaynak_metin)
