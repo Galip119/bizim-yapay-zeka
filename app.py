@@ -5,7 +5,7 @@ from duckduckgo_search import DDGS
 # GitHub şifreni gizli ayarlardan çekiyoruz
 token = st.secrets["GITHUB_TOKEN"]
 
-# GitHub'ın yapay zeka sunucusuna bağlanıyoruz
+# GitHub'ın yapay zeka sunucusuna bağlanıyoruz (Evrensel OpenAI kütüphanesi ile)
 client = OpenAI(
     base_url="https://models.inference.ai.azure.com",
     api_key=token,
@@ -36,7 +36,7 @@ if st.button("Gönder") and sorgu:
                 {"role": "system", "content": "Sen yardımcı bir asistansın. Sana sağlanan verileri kullanarak cevap üretirsin."},
                 {"role": "user", "content": prompt}
             ],
-            model="Mistral-Nemo", # GitHub'daki Mistral modeli
+            model="gpt-4o-mini", # Hata veren model yerine en stabil olanı yazdık
             temperature=0.5,
         )
         cevap = response.choices[0].message.content
