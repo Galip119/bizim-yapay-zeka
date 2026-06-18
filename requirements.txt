@@ -1,3 +1,9 @@
 streamlit
 openai
 tavily-python
+pypdf
+python-docx
+openpyxl
+beautifulsoup4
+pillow
+pytesseract
