@@ -26,9 +26,6 @@ if "son_cevap" not in st.session_state:
     st.session_state.son_cevap = ""
 if "son_dusunce" not in st.session_state:
     st.session_state.son_dusunce = ""
-# Sohbet geçmişi
-if "mesajlar" not in st.session_state:
-    st.session_state.mesajlar = []
 
 # Anahtarları dinamik yapmak için form numarasını kullanıyoruz
 metin_anahtari = f"sorgu_{st.session_state.form_num}"
@@ -36,25 +33,14 @@ dosya_anahtari = f"dosya_{st.session_state.form_num}"
 
 # Anahtarları al
 github_token = st.secrets["GITHUB_TOKEN"]
-# tavily_key = st.secrets["TAVILY_API_KEY"] # Arama özelliği kaldırıldı
+tavily_key = st.secrets["TAVILY_API_KEY"]
 
 # Servisleri başlat
 client = OpenAI(base_url="https://models.inference.ai.azure.com", api_key=github_token)
-# tavily = TavilyClient(api_key=tavily_key) # Arama özelliği kaldırıldı
+tavily = TavilyClient(api_key=tavily_key)
 
 # Başlık
 st.title("Eymen-GPT 🚀")
-
-# Yan panel
-with st.sidebar:
-    st.title("⚙️ Ayarlar")
-    st.info("Bu sürümde arama ve ses özellikleri devre dışıdır.")
-    if st.button("Sohbeti Temizle"):
-        st.session_state.messages = []
-        st.session_state.cevap_hazir = False
-        st.session_state.son_cevap = ""
-        st.session_state.son_dusunce = ""
-        st.rerun()
 
 # --- YAN YANA METİN VE DOSYA GİRİŞ ALANI ---
 col1, col2 = st.columns([4, 1])
@@ -130,48 +116,59 @@ gonder_butonu = st.button("Gönder")
 if gonder_butonu and (sorgu or dosya_icerigi):
     with st.spinner("Eymen-GPT düşünüyor..."):
         try:
-            kullanici_mesaji = ""
+            context = ""
+            
+            # İnternet araması
+            if sorgu:
+                search_result = tavily.search(query=sorgu, search_depth="basic")
+                context = "\n".join([res["content"] for res in search_result["results"]])
+            
+            # Dosya bağlama ekleme
             if dosya_icerigi:
-                kullanici_mesaji += f"\n\n[Kullanıcının Yüklediği Dosya/Kod İçeriği]:\n{dosya_icerigi}"
+                context += f"\n\n[Kullanıcının Yüklediği Dosya/Kod İçeriği]:\n{dosya_icerigi}"
+            
+            sistem_mesaji = (
+                "Sen çok gelişmiş bir Eymen-GPT yardımcı asistanısın. "
+                "KURAL: Akıl yürütme, analiz ve düşünme adımlarını cevabın EN BAŞINDA <dusunce> ve </dusunce> etiketlerinin arasına yaz. "
+                "Bu etiketlerin dışına ise SADECE nihai cevabı yaz."
+            )
+            
+            kullanici_mesaji = ""
+            if context:
+                kullanici_mesaji += f"Veriler:\n{context}\n\n"
             if sorgu:
                 kullanici_mesaji += f"Soru: {sorgu}"
             else:
                 kullanici_mesaji += "Yukarıdaki dosyanın/kodun içeriğini analiz et, ne işe yaradığını açıkla ve bana özetle."
 
-            st.session_state.messages.append({"role": "user", "content": kullanici_mesaji})
-
-            response_stream = client.chat.completions.create(
-                model="gpt-4o-mini",
+            # İstek gönderiliyor
+            response = client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "KURAL: Akıl yürütme, analiz ve düşünme adımlarını cevabın EN BAŞINDA <dusunce> ve </dusunce> etiketlerinin arasına yaz. Bu etiketlerin dışına ise SADECE nihai cevabı yaz."}
-                ] + [
-                    {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
+                    {"role": "system", "content": sistem_mesaji},
+                    {"role": "user", "content": kullanici_mesaji}
                 ],
-                stream=True
+                model="gpt-4o-mini",
+                temperature=0.6
             )
-
-            full_response = ""
-            for chunk in response_stream:
-                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                    full_response += chunk.choices[0].delta.content
-
+            
+            ham_cevap = response.choices[0].message.content
+            
             # Düşünme adımlarını ayırma
             dusunce_blogu = ""
-            temiz_cevap = full_response
+            temiz_cevap = ham_cevap
             
-            match = re.search(r'<dusunce>(.*?)</dusunce>', full_response, re.DOTALL)
+            match = re.search(r'<dusunce>(.*?)</dusunce>', ham_cevap, re.DOTALL)
             if match:
                 dusunce_blogu = match.group(1).strip()
-                temiz_cevap = re.sub(r'<dusunce>.*?</dusunce>', '', full_response, flags=re.DOTALL).strip()
+                temiz_cevap = re.sub(r'<dusunce>.*?</dusunce>', '', ham_cevap, flags=re.DOTALL).strip()
+            elif "thinking process:" in ham_cevap.lower():
+                parcalar = re.split(r'thinking process:', ham_cevap, flags=re.IGNORECASE)
+                dusunce_blogu = parcalar[0].strip()
+                temiz_cevap = parcalar[1].strip()
 
             # Cevapları ekranda kalıcı kılmak için session_state'e kaydediyoruz
             st.session_state.son_cevap = temiz_cevap
             st.session_state.son_dusunce = dusunce_blogu
-            st.session_state.messages.append({
-                "role": "assistant", 
-                "content": temiz_cevap, 
-                "dusunce": dusunce_blogu
-            })
             st.session_state.cevap_hazir = True
 
             # --- SİHRİN GERÇEKLEŞTİĞİ YER (OTOMATİK TEMİZLEME) ---
@@ -183,10 +180,9 @@ if gonder_butonu and (sorgu or dosya_icerigi):
             st.error(f"Bir hata oluştu: {e}")
 
 # Eğer kaydedilmiş bir cevap varsa, temizlenen sayfada bunları gösteriyoruz
-if st.session_state.messages:
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if "dusunce" in message and message["dusunce"]:
-                with st.expander("🧠 Eymen-GPT'nin Düşünme Adımlarını Göster/Gizle"):
-                    st.write(message["dusunce"])
-            st.markdown(message["content"])
+if st.session_state.cevap_hazir:
+    if st.session_state.son_dusunce:
+        with st.expand_tracker if hasattr(st, "expand_tracker") else st.expander("🧠 Eymen-GPT'nin Düşünme Adımlarını Göster/Gizle"):
+            st.write(st.session_state.son_dusunce)
+    
+    st.markdown(st.session_state.son_cevap)
