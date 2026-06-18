@@ -13,8 +13,23 @@ from bs4 import BeautifulSoup
 from PIL import Image
 import pytesseract
 
-# Sayfa genişlik ayarını yapalım (Modern durması için)
+# Sayfa genişlik ayarı
 st.set_page_config(layout="centered")
+
+# --- OTURUM HAFIZASI (SESSION STATE) KONTROLLERİ ---
+# Form elemanlarını sıfırlamak için benzersiz anahtarlar (key) üretiyoruz
+if "form_num" not in st.session_state:
+    st.session_state.form_num = 0
+if "cevap_hazir" not in st.session_state:
+    st.session_state.cevap_hazir = False
+if "son_cevap" not in st.session_state:
+    st.session_state.son_cevap = ""
+if "son_dusunce" not in st.session_state:
+    st.session_state.son_dusunce = ""
+
+# Anahtarları dinamik yapmak için form numarasını kullanıyoruz
+metin_anahtari = f"sorgu_{st.session_state.form_num}"
+dosya_anahtari = f"dosya_{st.session_state.form_num}"
 
 # Anahtarları al
 github_token = st.secrets["GITHUB_TOKEN"]
@@ -28,20 +43,28 @@ tavily = TavilyClient(api_key=tavily_key)
 st.title("Eymen-GPT 🚀")
 
 # --- YAN YANA METİN VE DOSYA GİRİŞ ALANI ---
-# Ekranı yan yana 2 sütuna bölüyoruz: %80 metin alanı, %20 dosya yükleme
 col1, col2 = st.columns([4, 1])
 
 with col1:
-    sorgu = st.text_input("Bana bir şeyler sor veya dosya analiz et:", placeholder="Mesajınızı yazın...", label_visibility="collapsed")
+    sorgu = st.text_input(
+        "Bana bir şeyler sor veya dosya analiz et:", 
+        placeholder="Mesajınızı yazın...", 
+        label_visibility="collapsed",
+        key=metin_anahtari
+    )
 
 with col2:
-    yuklenen_dosya = st.file_uploader("Dosya", type=["txt", "pdf", "docx", "xlsx", "py", "html", "htm", "json", "xml", "png", "jpg", "jpeg"], label_visibility="collapsed")
+    yuklenen_dosya = st.file_uploader(
+        "Dosya", 
+        type=["txt", "pdf", "docx", "xlsx", "py", "html", "htm", "json", "xml", "png", "jpg", "jpeg"], 
+        label_visibility="collapsed",
+        key=dosya_anahtari
+    )
 
-# Dosya içeriğini tutacak değişken
 dosya_icerigi = ""
 dosya_adi = ""
 
-# Dosya yükleme kontrolü ve okuma işlemleri
+# Dosya okuma işlemleri
 if yuklenen_dosya is not None:
     dosya_adi = yuklenen_dosya.name.lower()
     try:
@@ -80,7 +103,7 @@ if yuklenen_dosya is not None:
                 resim = Image.open(yuklenen_dosya)
                 dosya_icerigi = pytesseract.image_to_string(resim, lang="tur+eng")
             except:
-                st.warning("OCR sistemi sunucuda tam kurulu olmadığı için resimdeki yazılar okunamadı.")
+                st.warning("OCR sistemi tam çalışmadığı için yazı okunamadı.")
 
         if dosya_icerigi:
             st.info(f"📎 {yuklenen_dosya.name} yüklendi.")
@@ -91,7 +114,7 @@ if yuklenen_dosya is not None:
 gonder_butonu = st.button("Gönder")
 
 if gonder_butonu and (sorgu or dosya_icerigi):
-    with st.spinner("Eymen-GPT düşünüyor ve araştırıyor..."):
+    with st.spinner("Eymen-GPT düşünüyor..."):
         try:
             context = ""
             
@@ -100,16 +123,14 @@ if gonder_butonu and (sorgu or dosya_icerigi):
                 search_result = tavily.search(query=sorgu, search_depth="basic")
                 context = "\n".join([res["content"] for res in search_result["results"]])
             
-            # Dosya içeriğini bağlama ekleme
+            # Dosya bağlama ekleme
             if dosya_icerigi:
                 context += f"\n\n[Kullanıcının Yüklediği Dosya/Kod İçeriği]:\n{dosya_icerigi}"
             
-            # Mistral'e düşünmesini ama bunu özel etiketler içine almasını söylüyoruz
             sistem_mesaji = (
                 "Sen çok gelişmiş bir Eymen-GPT yardımcı asistanısın. "
-                "Sana verilen internet verilerini veya yüklenen dosya içeriklerini analiz ederek mükemmel cevaplar üretirsin. "
                 "KURAL: Akıl yürütme, analiz ve düşünme adımlarını cevabın EN BAŞINDA <dusunce> ve </dusunce> etiketlerinin arasına yaz. "
-                "Bu etiketlerin dışına ise SADECE kullanıcıya vereceğin temiz, net ve düzenli nihai cevabı yaz."
+                "Bu etiketlerin dışına ise SADECE nihai cevabı yaz."
             )
             
             kullanici_mesaji = ""
@@ -120,41 +141,48 @@ if gonder_butonu and (sorgu or dosya_icerigi):
             else:
                 kullanici_mesaji += "Yukarıdaki dosyanın/kodun içeriğini analiz et, ne işe yaradığını açıkla ve bana özetle."
 
-            # Yapay zekaya istek gönderiliyor
+            # İstek gönderiliyor
             response = client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": sistem_mesaji},
                     {"role": "user", "content": kullanici_mesaji}
                 ],
-                model="gpt-4o-mini", # Buraya Mistral model ismini de yazabilirsin
+                model="gpt-4o-mini",
                 temperature=0.6
             )
             
             ham_cevap = response.choices[0].message.content
             
-            # --- DÜŞÜNME ADIMLARINI AYIRMA MANTIĞI ---
+            # Düşünme adımlarını ayırma
             dusunce_blogu = ""
             temiz_cevap = ham_cevap
             
-            # Regex ile <dusunce>...</dusunce> arasını ayıklıyoruz
             match = re.search(r'<dusunce>(.*?)</dusunce>', ham_cevap, re.DOTALL)
             if match:
                 dusunce_blogu = match.group(1).strip()
                 temiz_cevap = re.sub(r'<dusunce>.*?</dusunce>', '', ham_cevap, flags=re.DOTALL).strip()
-            
-            # Eğer model etiketi unuttuysa ama klasik "Thinking:" falan yazdıysa yedek kontrol
             elif "thinking process:" in ham_cevap.lower():
                 parcalar = re.split(r'thinking process:', ham_cevap, flags=re.IGNORECASE)
                 dusunce_blogu = parcalar[0].strip()
                 temiz_cevap = parcalar[1].strip()
 
-            # 1. Düşünme adımları varsa bunu açılır kapanır bir kutuda gösteriyoruz
-            if dusunce_blogu:
-                with st.expander("🧠 Eymen-GPT'nin Düşünme Adımlarını Göster/Gizle"):
-                    st.write(dusunce_blogu)
-            
-            # 2. Esas temiz cevabı ana ekrana basıyoruz
-            st.markdown(temiz_cevap)
+            # Cevapları ekranda kalıcı kılmak için session_state'e kaydediyoruz
+            st.session_state.son_cevap = temiz_cevap
+            st.session_state.son_dusunce = dusunce_blogu
+            st.session_state.cevap_hazir = True
+
+            # --- SİHRİN GERÇEKLEŞTİĞİ YER (OTOMATİK TEMİZLEME) ---
+            # Form numarasını artırarak input alanlarını anında sıfırlıyoruz
+            st.session_state.form_num += 1
+            st.rerun() # Sayfayı anında yeni boş inputlarla yeniliyoruz
             
         except Exception as e:
             st.error(f"Bir hata oluştu: {e}")
+
+# Eğer kaydedilmiş bir cevap varsa, temizlenen sayfada bunları gösteriyoruz
+if st.session_state.cevap_hazir:
+    if st.session_state.son_dusunce:
+        with st.expand_tracker if hasattr(st, "expand_tracker") else st.expander("🧠 Eymen-GPT'nin Düşünme Adımlarını Göster/Gizle"):
+            st.write(st.session_state.son_dusunce)
+    
+    st.markdown(st.session_state.son_cevap)
