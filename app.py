@@ -1,46 +1,46 @@
 import streamlit as st
-from openai import OpenAI
 
-# 1. AYARLAR
-client = OpenAI(base_url="https://models.inference.ai.azure.com", api_key=st.secrets["GITHUB_TOKEN"])
+# 1. Sidebar'a Model Seçim Menüsü ve Bilgi Paneli Ekleme
+st.sidebar.title("🤖 Eymen-GPT Kontrol")
 
-st.set_page_config(page_title="Eymen-GPT Hibrit")
-st.title("Eymen-GPT Pro 🚀")
-
-# 2. MODEL SEÇİMİ
+# Model seçenekleri
 secilen_model = st.sidebar.selectbox(
-    "Metin Modeli Seç:",
-    ["mistralai/Mixtral-8x7B-Instruct-v0.1", "gpt-4o-mini"]
+    "Modeli Seç:",
+    ("mistralai/Mixtral-8x7B-Instruct-v0.1", "gpt-4o-mini")
 )
 
-if "messages" not in st.session_state: st.session_state.messages = []
+# Hakkını gösteren küçük bir bilgilendirme
+st.sidebar.markdown("---")
+st.sidebar.info("💡 **İpucu:** Eğer Mistral kotan dolarsa (günde 50 hak), otomatik olarak gpt-4o-mini'ye geçiş yapılır.")
 
-# 3. CHAT MANTIĞI
-prompt = st.chat_input("Mesaj yaz veya 'resim: [komut]' de...")
+# 2. Ana API İstek Fonksiyonu (Akıllı Geçişli)
+def get_ai_response(messages, model):
+    try:
+        # Önce seçilen modelle dene
+        return client.chat.completions.create(
+            model=model,
+            messages=messages
+        )
+    except Exception as e:
+        # Hata alınırsa (quota aşımı vb.) yedek modele geç
+        st.warning("⚠️ Seçili model limiti doldu! Otomatik olarak 'gpt-4o-mini'ye geçiliyor...")
+        return client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages
+        )
 
-if prompt:
+# 3. Sohbet Arayüzü Kullanımı
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Mesaj gönderildiğinde çalışacak kısım
+if prompt := st.chat_input("Mesajını yaz..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     
-    # GÖRSEL TESPİTİ (Eğer kullanıcı "resim:" ile başlarsa)
-    if prompt.lower().startswith("resim:"):
-        resim_komutu = prompt.split("resim:")[1].strip()
-        gorsel_url = f"https://image.pollinations.ai/prompt/{resim_komutu.replace(' ', '%20')}"
+    with st.chat_message("assistant"):
+        # API'den cevap alırken bizim akıllı fonksiyonu kullan
+        response = get_ai_response(st.session_state.messages, secilen_model)
+        full_response = response.choices[0].message.content
+        st.markdown(full_response)
         
-        with st.chat_message("assistant"):
-            st.markdown(f"**Görsel Oluşturuldu:** {resim_komutu}")
-            st.image(gorsel_url)
-            st.session_state.messages.append({"role": "assistant", "content": f"![{resim_komutu}]({gorsel_url})"})
-            
-    # METİN TESPİTİ (Normal sohbet)
-    else:
-        with st.chat_message("assistant"):
-            try:
-                response = client.chat.completions.create(
-                    model=secilen_model,
-                    messages=st.session_state.messages
-                )
-                cevap = response.choices[0].message.content
-                st.markdown(cevap)
-                st.session_state.messages.append({"role": "assistant", "content": cevap})
-            except Exception as e:
-                st.error(f"Hata: {e}")
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
