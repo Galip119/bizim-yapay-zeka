@@ -37,12 +37,12 @@ tavily_key = st.secrets["TAVILY_API_KEY"]
 client = OpenAI(base_url="https://models.inference.ai.azure.com", api_key=github_token)
 tavily = TavilyClient(api_key=tavily_key)
 
-# --- MODEL LİSTESİ ---
+# --- MODEL LİSTESİ GÜNCELLENDİ (70B ve Cohere Eklendi) ---
 MODELS = {
     "Mistral-8x7B": "Mistral-8x7B",
     "GPT-4o Mini": "gpt-4o-mini",
-    "Llama-3.1-8B": "meta-llama-3.1-8b-instruct",
-    "Phi-3 Medium": "phi-3-medium-128k-instruct",
+    "Llama-3.1-70B": "meta-llama-3.1-70b-instruct",
+    "Cohere Command R": "cohere-command-r",
     "GPT-4o": "gpt-4o"
 }
 
@@ -125,7 +125,6 @@ if gonder_butonu and (sorgu or dosya_icerigi):
         try:
             arama_metni = ""
             
-            # Sadece soru varsa veya soru dosyadan bağımsız bir şeyse arama yap
             if sorgu:
                 try:
                     search_result = tavily.search(query=sorgu, search_depth="basic")
@@ -133,7 +132,6 @@ if gonder_butonu and (sorgu or dosya_icerigi):
                 except Exception:
                     st.warning("İnternet araması yapılamadı.")
             
-            # --- SİSTEM MESAJI GÜNCELLENDİ (KESİN KURALLAR VE ÖRNEK EKLENDİ) ---
             sistem_mesaji = (
                 "Sen çok gelişmiş bir Eymen-GPT asistanısın. "
                 "KESİN KURAL: Herhangi bir cevap vermeden önce, kendi iç planlamanı, dosya analizini veya akıl yürütmeni "
@@ -144,14 +142,12 @@ if gonder_butonu and (sorgu or dosya_icerigi):
                 "Merhaba! İstediğiniz analizi tamamladım. İşte sonuçlar..."
             )
             
-            # --- MESAJ YAPISI GÜNCELLENDİ (KARIŞIKLIĞI ÖNLEMEK İÇİN) ---
             kullanici_mesaji = ""
             
             if arama_metni:
                 kullanici_mesaji += f"--- İNTERNET ARAMA SONUÇLARI ---\n{arama_metni}\n\n"
                 
             if dosya_icerigi:
-                # Çok büyük dosyaların sistemi çökertmesini önlemek için karakter sınırı (API limitleri için)
                 guvenli_icerik = dosya_icerigi[:35000] 
                 kullanici_mesaji += f"--- YÜKLENEN DOSYA İÇERİĞİ ---\n{guvenli_icerik}\n\n"
             
@@ -160,7 +156,6 @@ if gonder_butonu and (sorgu or dosya_icerigi):
             else:
                 kullanici_mesaji += "Kullanıcının Sorusu: Lütfen yüklediğim bu dosyayı detaylıca analiz et ve özetle."
 
-            # --- OTOMATİK MODEL DEĞİŞTİRME ---
             yedek_modeller = [secilen_model_id] + [m for m in MODELS.values() if m != secilen_model_id]
             basarili_oldu = False
             
@@ -184,7 +179,6 @@ if gonder_butonu and (sorgu or dosya_icerigi):
             else:
                 ham_cevap = response.choices[0].message.content
                 
-                # --- DÜŞÜNCE AYIKLAMA GÜNCELLENDİ (Düşünce, thinking gibi varyasyonları da yakalar) ---
                 dusunce_blogu = ""
                 temiz_cevap = ham_cevap
                 
@@ -195,7 +189,6 @@ if gonder_butonu and (sorgu or dosya_icerigi):
                 elif "thinking process:" in ham_cevap.lower():
                     parcalar = re.split(r'thinking process:', ham_cevap, flags=re.IGNORECASE)
                     if len(parcalar) > 1:
-                        # Eğer alt satırlara kadar iniyorsa kabaca ilk kısmı düşünce sayalım
                         ayirici = parcalar[1].find('\n\n')
                         if ayirici != -1:
                             dusunce_blogu = parcalar[1][:ayirici].strip()
