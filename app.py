@@ -51,7 +51,7 @@ st.sidebar.write("Kotası biten modelden otomatik olarak diğerine geçilir.")
 secilen_model_adi = st.sidebar.selectbox("Bir Model Seçin:", list(MODELS.keys()))
 secilen_model_id = MODELS[secilen_model_adi]
 
-st.title("Galip-GPT 🚀")
+st.title("Eymen-GPT 🚀")
 
 col1, col2 = st.columns([4, 1])
 
