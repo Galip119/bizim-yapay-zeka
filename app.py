@@ -20,12 +20,16 @@ if "son_cevap" not in st.session_state: st.session_state.son_cevap = ""
 if "son_dusunce" not in st.session_state: st.session_state.son_dusunce = ""
 if "soru_sayaci" not in st.session_state: st.session_state.soru_sayaci = 0
 
-# --- MODEL AYARLARI ---
+# --- MODEL AYARLARI (TAMAMI DÜZELTİLDİ VE YENİLERİ EKLENDİ) ---
 MODELS = {
-    "Mistral Large 2": "mistralai/mistral-large-2",
     "GPT-4o Mini": "gpt-4o-mini",
-    "Phi-3 Medium": "microsoft/phi-3-medium-128k-instruct",
-    "Llama-3-70B": "meta-llama/llama-3-70b-instruct"
+    "GPT-4o": "gpt-4o",
+    "Mistral Large 2": "mistral-large-2407",
+    "Mistral Nemo": "mistral-nemo",
+    "Mistral Small": "mistral-small",
+    "Llama-3.1-70B": "meta-llama-3.1-70b-instruct",
+    "Llama-3.1-8B": "meta-llama-3.1-8b-instruct",
+    "Phi-3 Medium": "phi-3-medium-128k-instruct"
 }
 
 st.title("Galip-GPT 🚀")
@@ -59,8 +63,7 @@ if gonder_butonu and (sorgu or yuklenen_dosya):
         st.error("Kota doldu! Lütfen model değiştirin veya sayfayı yenileyin.")
     else:
         with st.spinner(f"{selected_model_name} çalışıyor..."):
-            # (Dosya okuma kısımları aynıdır, kısalık için burada özet geçildi)
-            # ... [Dosya okuma mantığınızı buraya aynen ekleyebilirsiniz] ...
+            # Dosya okuma kısımları vb.
             
             try:
                 # API İstek Gönderimi
