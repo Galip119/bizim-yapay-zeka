@@ -26,7 +26,6 @@ if "son_cevap" not in st.session_state:
 if "son_dusunce" not in st.session_state:
     st.session_state.son_dusunce = ""
 
-# Anahtarları dinamik yapmak için form numarasını kullanıyoruz
 metin_anahtari = f"sorgu_{st.session_state.form_num}"
 dosya_anahtari = f"dosya_{st.session_state.form_num}"
 
@@ -38,7 +37,7 @@ tavily_key = st.secrets["TAVILY_API_KEY"]
 client = OpenAI(base_url="https://models.inference.ai.azure.com", api_key=github_token)
 tavily = TavilyClient(api_key=tavily_key)
 
-# --- MODEL LİSTESİ VE YEDEKLEME SİSTEMİ ---
+# --- MODEL LİSTESİ ---
 MODELS = {
     "Mistral-8x7B": "Mistral-8x7B",
     "GPT-4o Mini": "gpt-4o-mini",
@@ -47,16 +46,13 @@ MODELS = {
     "GPT-4o": "gpt-4o"
 }
 
-# Sidebar (Sol Menü) - Manuel Seçim
 st.sidebar.title("⚙️ Model Ayarları")
 st.sidebar.write("Kotası biten modelden otomatik olarak diğerine geçilir.")
 secilen_model_adi = st.sidebar.selectbox("Bir Model Seçin:", list(MODELS.keys()))
 secilen_model_id = MODELS[secilen_model_adi]
 
-# Başlık
 st.title("Galip-GPT 🚀")
 
-# --- YAN YANA METİN VE DOSYA GİRİŞ ALANI ---
 col1, col2 = st.columns([4, 1])
 
 with col1:
@@ -76,9 +72,7 @@ with col2:
     )
 
 dosya_icerigi = ""
-dosya_adi = ""
 
-# Dosya okuma işlemleri
 if yuklenen_dosya is not None:
     dosya_adi = yuklenen_dosya.name.lower()
     try:
@@ -120,46 +114,53 @@ if yuklenen_dosya is not None:
                 st.warning("OCR sistemi tam çalışmadığı için yazı okunamadı.")
 
         if dosya_icerigi:
-            st.info(f"📎 {yuklenen_dosya.name} yüklendi.")
+            st.info(f"📎 {yuklenen_dosya.name} başarıyla okundu.")
     except Exception as e:
         st.error(f"Dosya okunurken hata oluştu: {e}")
 
-# Gönder butonu
 gonder_butonu = st.button("Gönder")
 
 if gonder_butonu and (sorgu or dosya_icerigi):
     with st.spinner("Eymen-GPT düşünüyor..."):
         try:
-            context = ""
+            arama_metni = ""
             
-            # İnternet araması
+            # Sadece soru varsa veya soru dosyadan bağımsız bir şeyse arama yap
             if sorgu:
                 try:
                     search_result = tavily.search(query=sorgu, search_depth="basic")
-                    context = "\n".join([res["content"] for res in search_result["results"]])
-                except Exception as e:
-                    st.warning("İnternet araması yapılamadı, mevcut bilgilerle cevaplanıyor...")
+                    arama_metni = "\n".join([res["content"] for res in search_result["results"]])
+                except Exception:
+                    st.warning("İnternet araması yapılamadı.")
             
-            # Dosya bağlama ekleme
-            if dosya_icerigi:
-                context += f"\n\n[Kullanıcının Yüklediği Dosya/Kod İçeriği]:\n{dosya_icerigi}"
-            
+            # --- SİSTEM MESAJI GÜNCELLENDİ (KESİN KURALLAR VE ÖRNEK EKLENDİ) ---
             sistem_mesaji = (
-                "Sen çok gelişmiş bir Eymen-GPT yardımcı asistanısın. "
-                "KURAL: Akıl yürütme, analiz ve düşünme adımlarını cevabın EN BAŞINDA <dusunce> ve </dusunce> etiketlerinin arasına yaz. "
-                "Bu etiketlerin dışına ise SADECE nihai cevabı yaz."
+                "Sen çok gelişmiş bir Eymen-GPT asistanısın. "
+                "KESİN KURAL: Herhangi bir cevap vermeden önce, kendi iç planlamanı, dosya analizini veya akıl yürütmeni "
+                "MUTLAKA <dusunce> ve </dusunce> etiketleri arasına yazmalısın. "
+                "Düşünce kısmını bitirdikten sonra, etiketlerin DIŞINA kullanıcıya vereceğin temiz, nihai cevabı yaz.\n\n"
+                "Örnek Format:\n"
+                "<dusunce>\nKullanıcı bana bir dosya vermiş. İçeriğine bakıyorum... Şunları özetlemeliyim...\n</dusunce>\n"
+                "Merhaba! İstediğiniz analizi tamamladım. İşte sonuçlar..."
             )
             
+            # --- MESAJ YAPISI GÜNCELLENDİ (KARIŞIKLIĞI ÖNLEMEK İÇİN) ---
             kullanici_mesaji = ""
-            if context:
-                kullanici_mesaji += f"Veriler:\n{context}\n\n"
+            
+            if arama_metni:
+                kullanici_mesaji += f"--- İNTERNET ARAMA SONUÇLARI ---\n{arama_metni}\n\n"
+                
+            if dosya_icerigi:
+                # Çok büyük dosyaların sistemi çökertmesini önlemek için karakter sınırı (API limitleri için)
+                guvenli_icerik = dosya_icerigi[:35000] 
+                kullanici_mesaji += f"--- YÜKLENEN DOSYA İÇERİĞİ ---\n{guvenli_icerik}\n\n"
+            
             if sorgu:
-                kullanici_mesaji += f"Soru: {sorgu}"
+                kullanici_mesaji += f"Kullanıcının Sorusu: {sorgu}"
             else:
-                kullanici_mesaji += "Yukarıdaki dosyanın/kodun içeriğini analiz et, ne işe yaradığını açıkla ve bana özetle."
+                kullanici_mesaji += "Kullanıcının Sorusu: Lütfen yüklediğim bu dosyayı detaylıca analiz et ve özetle."
 
-            # --- OTOMATİK MODEL DEĞİŞTİRME SİSTEMİ ---
-            # Seçilen modeli ilk sıraya koy, diğerlerini yedek olarak arkasına diz
+            # --- OTOMATİK MODEL DEĞİŞTİRME ---
             yedek_modeller = [secilen_model_id] + [m for m in MODELS.values() if m != secilen_model_id]
             basarili_oldu = False
             
@@ -174,44 +175,45 @@ if gonder_butonu and (sorgu or dosya_icerigi):
                         temperature=0.6
                     )
                     basarili_oldu = True
-                    # Hangi modelin çalıştığını terminalde/logda görmek istersen:
-                    # print(f"Kullanılan Model: {aktif_model}")
-                    break # Başarılı olduysa döngüden çık
+                    break 
                 except Exception as e:
-                    # Hata verirse (kota bittiyse), sessizce bir sonraki modele geçer
                     continue
             
             if not basarili_oldu:
-                st.error("Tüm modellerin kotası dolmuş veya bir bağlantı hatası var. Lütfen daha sonra tekrar dene.")
+                st.error("Tüm modellerin kotası dolmuş veya bir bağlantı hatası var.")
             else:
                 ham_cevap = response.choices[0].message.content
                 
-                # Düşünme adımlarını ayırma
+                # --- DÜŞÜNCE AYIKLAMA GÜNCELLENDİ (Düşünce, thinking gibi varyasyonları da yakalar) ---
                 dusunce_blogu = ""
                 temiz_cevap = ham_cevap
                 
-                match = re.search(r'<dusunce>(.*?)</dusunce>', ham_cevap, re.DOTALL)
+                match = re.search(r'<(?:dusunce|düşünce|thinking)>(.*?)</(?:dusunce|düşünce|thinking)>', ham_cevap, re.DOTALL | re.IGNORECASE)
                 if match:
                     dusunce_blogu = match.group(1).strip()
-                    temiz_cevap = re.sub(r'<dusunce>.*?</dusunce>', '', ham_cevap, flags=re.DOTALL).strip()
+                    temiz_cevap = re.sub(r'<(?:dusunce|düşünce|thinking)>.*?</(?:dusunce|düşünce|thinking)>', '', ham_cevap, flags=re.DOTALL | re.IGNORECASE).strip()
                 elif "thinking process:" in ham_cevap.lower():
                     parcalar = re.split(r'thinking process:', ham_cevap, flags=re.IGNORECASE)
-                    dusunce_blogu = parcalar[0].strip()
-                    temiz_cevap = parcalar[1].strip()
+                    if len(parcalar) > 1:
+                        # Eğer alt satırlara kadar iniyorsa kabaca ilk kısmı düşünce sayalım
+                        ayirici = parcalar[1].find('\n\n')
+                        if ayirici != -1:
+                            dusunce_blogu = parcalar[1][:ayirici].strip()
+                            temiz_cevap = parcalar[1][ayirici:].strip()
+                        else:
+                            dusunce_blogu = parcalar[1].strip()
+                            temiz_cevap = "Cevap metni ayrılamadı, lütfen düşünce bloğuna bakın."
 
-                # Cevapları ekranda kalıcı kılmak için session_state'e kaydediyoruz
                 st.session_state.son_cevap = temiz_cevap
                 st.session_state.son_dusunce = dusunce_blogu
                 st.session_state.cevap_hazir = True
 
-                # --- SİHRİN GERÇEKLEŞTİĞİ YER (OTOMATİK TEMİZLEME) ---
                 st.session_state.form_num += 1
                 st.rerun()
             
         except Exception as e:
             st.error(f"Bir hata oluştu: {e}")
 
-# Eğer kaydedilmiş bir cevap varsa, temizlenen sayfada bunları gösteriyoruz
 if st.session_state.cevap_hazir:
     if st.session_state.son_dusunce:
         with st.expander("🧠 Eymen-GPT'nin Düşünme Adımlarını Göster/Gizle"):
