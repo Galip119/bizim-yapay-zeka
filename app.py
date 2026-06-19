@@ -40,7 +40,7 @@ client = OpenAI(base_url="https://models.inference.ai.azure.com", api_key=github
 tavily = TavilyClient(api_key=tavily_key)
 
 # Başlık
-st.title("Eymen-GPT 🚀")
+st.title("Galip-GPT 🚀")
 
 # --- YAN YANA METİN VE DOSYA GİRİŞ ALANI ---
 col1, col2 = st.columns([4, 1])
