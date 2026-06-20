@@ -5,7 +5,8 @@ import json
 import xml.etree.ElementTree as ET
 import re
 import urllib.parse
-import requests
+import os
+from gtts import gTTS
 
 # Dosya okuma kütüphaneleri
 from pypdf import PdfReader
@@ -18,9 +19,9 @@ import pytesseract
 # Sayfa genişlik ayarı
 st.set_page_config(layout="centered", page_title="Eymen-GPT Gelişmiş")
 
-# --- OTURUM HAFIZASI (SESSION STATE) KONTROLLERİ ---
+# --- OTURUM HAFIZASI (SESSION STATE) ---
 if "form_num" not in st.session_state: st.session_state.form_num = 0
-if "mesaj_gecmisi" not in st.session_state: st.session_state.mesaj_gecmisi = [] # SOHBET HAFIZASI EKLENDİ
+if "mesaj_gecmisi" not in st.session_state: st.session_state.mesaj_gecmisi = []
 if "cevap_hazir" not in st.session_state: st.session_state.cevap_hazir = False
 if "son_cevap" not in st.session_state: st.session_state.son_cevap = ""
 if "son_dusunce" not in st.session_state: st.session_state.son_dusunce = ""
@@ -50,15 +51,14 @@ MODELS = {
 # --- SOL MENÜ VE MOD SEÇİMİ ---
 st.sidebar.title("⚙️ Ayarlar")
 
-# 4. Mod Eklendi!
-uygulama_modu = st.sidebar.radio("Mod Seçimi:", ["Sohbet & Analiz 💬", "Ressam Modu 🎨", "Müzisyen Modu 🎵", "Sesli Yanıt Modu 🗣️"])
+# Müzik modu kaldırıldı, temiz 3 mod
+uygulama_modu = st.sidebar.radio("Mod Seçimi:", ["Sohbet & Analiz 💬", "Ressam Modu 🎨", "Sesli Yanıt Modu 🗣️"])
 
 st.sidebar.markdown("---")
 st.sidebar.write("Kotası biten modelden otomatik olarak diğerine geçilir.")
 secilen_model_adi = st.sidebar.selectbox("Bir Model Seçin:", list(MODELS.keys()))
 secilen_model_id = MODELS[secilen_model_adi]
 
-# Hafızayı temizleme butonu
 if st.sidebar.button("🧹 Sohbet Geçmişini Temizle"):
     st.session_state.mesaj_gecmisi = []
     st.rerun()
@@ -69,8 +69,6 @@ st.title("Eymen-GPT 🚀")
 # 1. MOD: SOHBET VE ANALİZ (HAFIZALI)
 # ==========================================
 if uygulama_modu == "Sohbet & Analiz 💬":
-    
-    # Geçmiş mesajları ekranda göster
     for mesaj in st.session_state.mesaj_gecmisi:
         with st.chat_message(mesaj["role"]):
             st.markdown(mesaj["content"])
@@ -126,8 +124,6 @@ if uygulama_modu == "Sohbet & Analiz 💬":
         except Exception as e: st.error(f"Dosya okunurken hata oluştu: {e}")
 
     if sorgu or dosya_icerigi:
-        
-        # Kullanıcının sorusunu ekranda anında göster ve hafızaya kaydet
         if sorgu:
             st.session_state.mesaj_gecmisi.append({"role": "user", "content": sorgu})
             with st.chat_message("user"):
@@ -150,9 +146,8 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                 if sorgu: kullanici_mesaji += f"Soru: {sorgu}"
                 else: kullanici_mesaji += "Soru: Lütfen yüklediğim bu dosyayı detaylıca analiz et ve özetle."
 
-                # Geçmiş mesajları API'ye gönderilecek listeye ekliyoruz
                 api_mesajlari = [{"role": "system", "content": sistem_mesaji}]
-                for msg in st.session_state.mesaj_gecmisi[:-1]: # Son mesajı aşağıda ekleyeceğiz
+                for msg in st.session_state.mesaj_gecmisi[:-1]:
                     api_mesajlari.append(msg)
                 api_mesajlari.append({"role": "user", "content": kullanici_mesaji})
 
@@ -179,7 +174,6 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                         dusunce_blogu = match.group(1).strip()
                         temiz_cevap = re.sub(r'<(?:dusunce|düşünce|thinking)>.*?</(?:dusunce|düşünce|thinking)>', '', ham_cevap, flags=re.DOTALL | re.IGNORECASE).strip()
 
-                    # Asistanın cevabını hafızaya kaydet ve ekrana bas
                     st.session_state.mesaj_gecmisi.append({"role": "assistant", "content": temiz_cevap})
                     
                     with st.chat_message("assistant"):
@@ -195,7 +189,6 @@ if uygulama_modu == "Sohbet & Analiz 💬":
 # ==========================================
 elif uygulama_modu == "Ressam Modu 🎨":
     st.markdown("### 🎨 Hayal Gücünü Ekrana Yansıt")
-    st.write("İstediğin resmi detaylıca tarif et. Ne kadar çok detay verirsen, o kadar iyi sonuç alırsın!")
     
     resim_sorgu = st.text_input("Neyin resmini çizmek istersin?", placeholder="Örn: Yağmurlu bir gecede yürüyen fütüristik kedi", key=f"resim_input_{st.session_state.form_num}")
     cizdir_butonu = st.button("🖼️ Resmi Oluştur")
@@ -212,56 +205,28 @@ elif uygulama_modu == "Ressam Modu 🎨":
         st.image(st.session_state.son_resim_url, caption="İşte oluşturulan resim!", use_container_width=True)
 
 # ==========================================
-# 3. MOD: MÜZİSYEN MODU
-# ==========================================
-elif uygulama_modu == "Müzisyen Modu 🎵":
-    st.markdown("### 🎵 Yapay Zeka Müzik Stüdyosu")
-    st.write("İstediğin ritmi veya melodiyi İngilizce veya Türkçe tarif et.")
-    
-    muzik_sorgu = st.text_input("Nasıl bir müzik istiyorsun?", placeholder="Örn: 80s synthwave fast beat", key=f"muzik_input_{st.session_state.form_num}")
-    cal_butonu = st.button("🎸 Müziği Üret")
-
-    if cal_butonu and muzik_sorgu:
-        with st.spinner("Müzik besteleniyor... (Bu işlem 30-40 saniye sürebilir, heyecanla bekliyoruz!)"):
-            try:
-                API_URL = "https://api-inference.huggingface.co/models/facebook/musicgen-small"
-                headers = {"Authorization": f"Bearer {st.secrets['HUGGINGFACE_TOKEN']}"}
-                payload = {"inputs": muzik_sorgu}
-
-                response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
-
-                if response.status_code == 200:
-                    audio_bytes = response.content
-                    st.audio(audio_bytes, format='audio/wav')
-                    st.success("Müzik hazır! 🎧")
-                elif response.status_code == 503:
-                    st.warning("⏳ Yapay zeka uykudan uyanıyor! Model şu an yükleniyor. Lütfen yaklaşık 20 saniye bekleyip butona TEKRAR bas.")
-                else:
-                    st.error(f"Hata Kodu {response.status_code}: Sunucu şu an meşgul. Lütfen 1 dakika sonra tekrar dene.")
-            
-            except requests.exceptions.ConnectionError:
-                st.error("Bağlantı Hatası: Streamlit ana sunucuya bağlanamadı. Lütfen sağ alttaki 'Manage App' kısmından uygulamayı 'Reboot' et veya sayfayı yenile.")
-            except Exception as e:
-                st.error(f"Beklenmeyen bir hata: {e}")
-
-# ==========================================
-# 4. MOD: SESLİ YANIT MODU (YENİ VE HATASIZ)
+# 3. MOD: SESLİ YANIT MODU (HATASIZ FİZİKSEL KAYIT)
 # ==========================================
 elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
     st.markdown("### 🗣️ Eymen-GPT Sesli Asistan")
     st.write("Yazdığın her şeyi gerçekçi bir sesle sana okuyabilirim.")
     
-    sesli_sorgu = st.text_input("Ne duymak istersin?", placeholder="Örn: Bana yapay zekayı anlat", key=f"sesli_input_{st.session_state.form_num}")
+    sesli_sorgu = st.text_input("Ne duymak istersin?", placeholder="Örn: Bana yıldızları anlat", key=f"sesli_input_{st.session_state.form_num}")
     oku_butonu = st.button("🎙️ Seslendir")
 
     if oku_butonu and sesli_sorgu:
-        with st.spinner("Ses dosyası hazırlanıyor..."):
+        with st.spinner("Sesi kasede kaydediyorum..."):
             try:
-                # Hiçbir şifre veya kütüphane gerektirmeyen Google TTS altyapısı!
-                guvenli_metin = urllib.parse.quote(sesli_sorgu)
-                tts_url = f"https://translate.google.com/translate_tts?ie=UTF-8&tl=tr&client=tw-ob&q={guvenli_metin}"
+                # Sesi fiziksel olarak oluştur ve kaydet
+                tts = gTTS(text=sesli_sorgu, lang='tr')
+                dosya_yolu = "eymen_ses.mp3"
+                tts.save(dosya_yolu)
                 
-                st.audio(tts_url, format='audio/mp3')
+                # Kaydedilen fiziksel dosyayı Streamlit ile oynat
+                with open(dosya_yolu, "rb") as audio_file:
+                    audio_bytes = audio_file.read()
+                    st.audio(audio_bytes, format='audio/mp3')
+                
                 st.success("İşte sesin hazır! 🎧")
             except Exception as e:
                 st.error(f"Seslendirme hatası: {e}")
