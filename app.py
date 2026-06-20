@@ -235,7 +235,7 @@ elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
 # 4. MOD: MİNİ MÜZİK MOTORU 🎵 (8-BİT RETRO)
 # ==========================================
 elif uygulama_modu == "Müzisyen Modu 🎵":
-    st.markdown("### 🎵 Eymen-GPT Mini Müzik Motoru (Geliştirilme aşamasında!) ")
+    st.markdown("### 🎵 Eymen-GPT Mini Müzik Motoru (Geliştirilme aşamasında ama kullanılabilir!) ")
     st.write("Yazdığın metni matematiksel dalgalara çevirip tamamen internetsiz, 8-bit retro oyun müziği üretiyorum!")
     
     muzik_sorgu = st.text_input("Nasıl bir his istiyorsun? (Örn: Uzay, Macera, Robot)", key=f"mini_muzik_{st.session_state.form_num}")
