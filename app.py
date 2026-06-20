@@ -2,16 +2,14 @@ import streamlit as st
 from openai import OpenAI
 from tavily import TavilyClient
 import json
-import xml.etree.ElementTree as ET
-import re
 import urllib.parse
 import os
 from gtts import gTTS
 import numpy as np
 import scipy.io.wavfile as wav
 import io
+import re
 
-# Dosya okuma kütüphaneleri
 from pypdf import PdfReader
 from docx import Document
 import openpyxl
@@ -19,10 +17,9 @@ from bs4 import BeautifulSoup
 from PIL import Image
 import pytesseract
 
-# Sayfa genişlik ayarı
 st.set_page_config(layout="centered", page_title="Eymen-GPT Gelişmiş")
 
-# --- OTURUM HAFIZASI (SESSION STATE) ---
+# --- OTURUM HAFIZASI ---
 if "form_num" not in st.session_state: st.session_state.form_num = 0
 if "mesaj_gecmisi" not in st.session_state: st.session_state.mesaj_gecmisi = []
 if "cevap_hazir" not in st.session_state: st.session_state.cevap_hazir = False
@@ -34,15 +31,12 @@ if "son_resim_url" not in st.session_state: st.session_state.son_resim_url = ""
 metin_anahtari = f"sorgu_{st.session_state.form_num}"
 dosya_anahtari = f"dosya_{st.session_state.form_num}"
 
-# Anahtarları al
 github_token = st.secrets["GITHUB_TOKEN"]
 tavily_key = st.secrets["TAVILY_API_KEY"]
 
-# Servisleri başlat
 client = OpenAI(base_url="https://models.inference.ai.azure.com", api_key=github_token)
 tavily = TavilyClient(api_key=tavily_key)
 
-# --- MODEL LİSTESİ ---
 MODELS = {
     "Mistral-8x7B": "Mistral-8x7B",
     "GPT-4o Mini": "gpt-4o-mini",
@@ -51,7 +45,6 @@ MODELS = {
     "GPT-4o": "gpt-4o"
 }
 
-# --- SOL MENÜ VE MOD SEÇİMİ ---
 st.sidebar.title("⚙️ Ayarlar")
 
 uygulama_modu = st.sidebar.radio("Mod Seçimi:", ["Sohbet & Analiz 💬", "Ressam Modu 🎨", "Sesli Yanıt Modu 🗣️", "Müzisyen Modu 🎵"])
@@ -68,7 +61,7 @@ if st.sidebar.button("🧹 Sohbet Geçmişini Temizle"):
 st.title("Eymen-GPT 🚀")
 
 # ==========================================
-# 1. MOD: SOHBET VE ANALİZ (HAFIZALI)
+# 1. MOD: SOHBET VE ANALİZ
 # ==========================================
 if uygulama_modu == "Sohbet & Analiz 💬":
     for mesaj in st.session_state.mesaj_gecmisi:
@@ -232,29 +225,43 @@ elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
                 st.error(f"Seslendirme hatası: {e}")
 
 # ==========================================
-# 4. MOD: GELİŞMİŞ ÇOK KANALLI MÜZİK MOTORU 🎵
+# 4. MOD: ULTRA GENİŞ MÜZİK MOTORU 🎵
 # ==========================================
 elif uygulama_modu == "Müzisyen Modu 🎵":
-    st.markdown("### 🎵 Eymen-GPT Gelişmiş Müzik Stüdyosu")
-    st.write("Hem davulları (ıtdısbıdtıs) hem de melodileri (dıdıdını) aynı anda çalabilen yepyeni ses motoru!")
+    st.markdown("### 🎵 Eymen-GPT Ultra Geniş Müzik Stüdyosu")
+    st.write("Sınırsız ses aralığı, derin baslar, arka plan akorları ve uzun süreli döngüler!")
     
-    muzik_sorgu = st.text_input("Nasıl bir şarkı yapalım?", placeholder="Örn: Hızlı bir rap beat veya hüzünlü yavaş bir piyano", key=f"gelismis_muzik_{st.session_state.form_num}")
-    uret_butonu = st.button("🎧 Müziği Sentezle")
+    muzik_sorgu = st.text_input("Nasıl bir şarkı yapalım?", placeholder="Örn: Kulüpte çalan çok sert bir rap veya yağmur altında çalan yavaş, hüzünlü bir parça", key=f"ultra_muzik_{st.session_state.form_num}")
+    uret_butonu = st.button("🎧 Stüdyoyu Başlat")
 
     if uret_butonu and muzik_sorgu:
-        with st.spinner("Eymen-GPT notaları yazıyor ve enstrümanları akort ediyor..."):
+        with st.spinner("Devasa müzik altyapısı hesaplanıyor, tüm kanallar miksleniyor..."):
             try:
-                # LLM'den json formatında ritim ve melodi istiyoruz
-                sistem_mesaji = """Sen usta bir müzisyensin. Kullanıcının istediği tarza göre 16 adımlık bir müzik döngüsü yazacaksın.
-                SADECE geçerli bir JSON döndür. Başka hiçbir harf veya sembol yazma.
-                Format:
+                # 1. Dev Nota Sözlüğünü Oluştur (C2'den B6'ya kadar Sınırsız Aralık)
+                notalar_listesi = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+                notalar_sozlugu = {"-": 0.0}
+                for oktav in range(2, 7):
+                    for i, nota in enumerate(notalar_listesi):
+                        n = (oktav - 4) * 12 + (i - 9) # A4 (440Hz) referans alınarak
+                        notalar_sozlugu[f"{nota}{oktav}"] = 440.0 * (2.0 ** (n / 12.0))
+
+                # 2. LLM'den 32 adımlık devasa bir JSON iskeleti istiyoruz
+                sistem_mesaji = """Sen efsanevi bir müzik prodüktörüsün. Kullanıcının ruh haline göre tam 32 adımlık (2 tam ölçü) bir müzik kalıbı yazacaksın.
+                SADECE JSON FORMATINDA YAZ.
                 {
-                    "tempo": 100,
-                    "davul": ["K", "-", "H", "S", "K", "K", "H", "S", "K", "-", "H", "S", "K", "K", "H", "S"],
-                    "melodi": ["C4", "-", "D4", "-", "E4", "-", "-", "-", "C4", "-", "D4", "-", "E4", "-", "-", "-"]
+                    "tempo": 120,
+                    "davul": ["K", "H", "S", "H", ... 32 adet],
+                    "bas": ["C3", "-", "C3", "-", ... 32 adet],
+                    "akor": ["C4", "C4", "-", "-", ... 32 adet],
+                    "melodi": ["C5", "-", "Eb5", "-", ... 32 adet]
                 }
-                K=Kick, S=Snare, H=Hihat, - = Boşluk. Notalar C3 ile B5 arasıdır.
-                Rap isen tempo yüksek ve bol K/S/H kullan. Hüzünlü isen tempo düşük, davullar seyrek (-), melodi yoğun olsun.
+                Kurallar:
+                1. Davul için: K(Kick), S(Snare), H(Hihat), C(Crash Zil), -(Boşluk). Rap için çok K ve S kullan, hüzünlü için seyrek tut.
+                2. Notalar için C, C#, D, D#, E, F, F#, G, G#, A, A#, B kullan. (Örn: F#4, A#3).
+                3. Bas kanalı C2 ile B3 arasında derin sesler olsun.
+                4. Akor (Pad) kanalı C4 ile B4 arasında dolgu sesleri olsun.
+                5. Melodi kanalı C5 ile B6 arasında ön planda çalan lead olsun.
+                6. Bütün listelerin uzunluğu KESİNLİKLE 32 olmalıdır!
                 """
                 
                 response = client.chat.completions.create(
@@ -266,81 +273,83 @@ elif uygulama_modu == "Müzisyen Modu 🎵":
                     temperature=0.7
                 )
                 
-                # JSON'u temizle ve Python'a yükle
                 json_str = response.choices[0].message.content.strip()
                 json_str = json_str.replace("```json", "").replace("```", "").strip()
                 sarki_verisi = json.loads(json_str)
                 
-                # -- MÜZİK MOTORU BAŞLIYOR --
+                # 3. Ses Motoru Ayarları
                 sample_rate = 44100
-                # 16 adım var, her adım (8th note) süresini tempoya göre hesapla
-                adim_suresi = (60.0 / sarki_verisi["tempo"]) / 2.0
+                adim_suresi = (60.0 / sarki_verisi.get("tempo", 100)) / 4.0 # Her adım (16th note)
                 samples_per_step = int(sample_rate * adim_suresi)
                 t = np.linspace(0, adim_suresi, samples_per_step, endpoint=False)
                 
-                notalar_sozlugu = {
-                    "C3": 130.8, "D3": 146.8, "E3": 164.8, "F3": 174.6, "G3": 196.0, "A3": 220.0, "B3": 246.9,
-                    "C4": 261.6, "D4": 293.6, "E4": 329.6, "F4": 349.2, "G4": 392.0, "A4": 440.0, "B4": 493.8,
-                    "C5": 523.2, "D5": 587.3, "E5": 659.2, "F5": 698.4, "G5": 783.9, "A5": 880.0, "B5": 987.7,
-                    "-": 0.0
-                }
+                # Sentezleyici Fonksiyonları (Çok daha zengin sesler)
+                def kick(): return np.sin(2 * np.pi * np.linspace(150, 40, samples_per_step) * t) * np.exp(-15 * t) * 1.5
+                def snare(): return np.random.uniform(-1, 1, samples_per_step) * np.exp(-25 * t) * 0.8
+                def hihat(): return np.random.uniform(-1, 1, samples_per_step) * np.exp(-60 * t) * 0.3
+                def crash(): return np.random.uniform(-1, 1, samples_per_step) * np.exp(-3 * t) * 0.6
                 
-                # Enstrüman Fonksiyonları
-                def kick_uret():
-                    f = np.linspace(150, 40, samples_per_step)
-                    return np.sin(2 * np.pi * f * t) * np.exp(-15 * t) * 1.5
-
-                def snare_uret():
-                    noise = np.random.uniform(-1, 1, samples_per_step)
-                    return noise * np.exp(-20 * t) * 0.8
-
-                def hihat_uret():
-                    noise = np.random.uniform(-1, 1, samples_per_step)
-                    return noise * np.exp(-50 * t) * 0.4
-
-                def synth_uret(frekans):
+                def synth_bas(frekans): # Derin Testere Dişi (Sawtooth)
                     if frekans == 0.0: return np.zeros(samples_per_step)
-                    # Yumuşak bir melodi sesi için sinüs dalgaları karıştırılıyor
-                    sin1 = np.sin(2 * np.pi * frekans * t)
-                    sin2 = 0.5 * np.sin(2 * np.pi * (frekans * 2) * t)
-                    zarf = np.exp(-3 * t)
-                    return (sin1 + sin2) * zarf * 0.6
-                
+                    return 0.8 * (2 * (t * frekans - np.floor(t * frekans + 0.5))) * np.exp(-2 * t)
+                    
+                def synth_akor(frekans): # Yumuşak Pad (Sinüs Karışımı)
+                    if frekans == 0.0: return np.zeros(samples_per_step)
+                    return 0.4 * (np.sin(2 * np.pi * frekans * t) + 0.3 * np.sin(2 * np.pi * frekans * 2 * t))
+                    
+                def synth_melodi(frekans): # Parlak Kare Dalga (Square)
+                    if frekans == 0.0: return np.zeros(samples_per_step)
+                    return 0.6 * np.sign(np.sin(2 * np.pi * frekans * t)) * np.exp(-4 * t)
+
+                # 4. Şarkıyı Sentezleme (32 adımı 4 kez tekrarlayıp uzun parça yapıyoruz)
                 ana_ses = np.array([])
+                tekrar_sayisi = 4 # 32 adımı 4 kez çal = 128 adım = Uzun şarkı!
                 
-                davullar = sarki_verisi.get("davul", ["-"]*16)
-                melodi = sarki_verisi.get("melodi", ["-"]*16)
+                davullar = sarki_verisi.get("davul", ["-"]*32)
+                baslar = sarki_verisi.get("bas", ["-"]*32)
+                akorlar = sarki_verisi.get("akor", ["-"]*32)
+                melodiler = sarki_verisi.get("melodi", ["-"]*32)
                 
-                # 16 adımı tek tek sentezleyip arka arkaya birleştiriyoruz
-                for i in range(16):
+                toplam_adim = 32 * tekrar_sayisi
+                
+                for i in range(toplam_adim):
                     katman = np.zeros(samples_per_step)
-                    d = davullar[i] if i < len(davullar) else "-"
-                    m = melodi[i] if i < len(melodi) else "-"
+                    idx = i % 32 # 32 adımda bir başa dön
                     
-                    if d == "K": katman += kick_uret()
-                    elif d == "S": katman += snare_uret()
-                    elif d == "H": katman += hihat_uret()
+                    # Güvenlik için index kontrolü
+                    d = davullar[idx] if idx < len(davullar) else "-"
+                    b = baslar[idx] if idx < len(baslar) else "-"
+                    a = akorlar[idx] if idx < len(akorlar) else "-"
+                    m = melodiler[idx] if idx < len(melodiler) else "-"
                     
-                    frekans = notalar_sozlugu.get(m, 0.0)
-                    katman += synth_uret(frekans)
+                    # Davullar
+                    if d == "K": katman += kick()
+                    elif d == "S": katman += snare()
+                    elif d == "H": katman += hihat()
+                    elif d == "C": katman += crash()
+                    
+                    # Enstrümanlar
+                    katman += synth_bas(notalar_sozlugu.get(b, 0.0))
+                    katman += synth_akor(notalar_sozlugu.get(a, 0.0))
+                    katman += synth_melodi(notalar_sozlugu.get(m, 0.0))
                     
                     ana_ses = np.concatenate((ana_ses, katman))
                 
-                # Sesi parlat (Normalize) ve 16-bit formatına çevir (Hata korumalı)
+                # Miksi Parlat (Mastering)
                 max_val = np.max(np.abs(ana_ses))
                 if max_val > 0:
                     ana_ses = np.int16(ana_ses / max_val * 32767)
                 else:
                     ana_ses = np.int16(ana_ses)
                 
-                # Dosya oluşturmadan RAM üzerinden çal
                 byte_io = io.BytesIO()
                 wav.write(byte_io, sample_rate, ana_ses)
-                st.audio(byte_io.getvalue(), format='audio/wav')
-                st.success(f"Müzik hazır! 🎧 (Tempo: {sarki_verisi['tempo']} BPM)")
                 
-                with st.expander("🛠️ DJ Eymen'in Altyapı Kodlarını İncele"):
+                st.audio(byte_io.getvalue(), format='audio/wav')
+                st.success(f"Devasa Müzik Altyapısı Hazır! 🎧 (Tempo: {sarki_verisi.get('tempo', 100)} BPM)")
+                
+                with st.expander("🛠️ Stüdyo Notalarını İncele"):
                     st.json(sarki_verisi)
                     
             except Exception as e:
-                st.error(f"Sentezleyici Hatası: Lütfen bir kez daha dene. Detay: {e}")
+                st.error(f"Sentezleyici Hatası: Melodi oluştururken küçük bir pürüz çıktı, butona tekrar bas. Detay: {e}")
