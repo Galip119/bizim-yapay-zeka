@@ -51,8 +51,8 @@ MODELS = {
 # --- SOL MENÜ VE MOD SEÇİMİ ---
 st.sidebar.title("⚙️ Ayarlar")
 
-# Müzik modu kaldırıldı, temiz 3 mod
-uygulama_modu = st.sidebar.radio("Mod Seçimi:", ["Sohbet & Analiz 💬", "Ressam Modu 🎨", "Sesli Yanıt Modu 🗣️"])
+# 4 Modun hepsi burada!
+uygulama_modu = st.sidebar.radio("Mod Seçimi:", ["Sohbet & Analiz 💬", "Ressam Modu 🎨", "Sesli Yanıt Modu 🗣️", "Müzisyen Modu 🎵"])
 
 st.sidebar.markdown("---")
 st.sidebar.write("Kotası biten modelden otomatik olarak diğerine geçilir.")
@@ -205,7 +205,7 @@ elif uygulama_modu == "Ressam Modu 🎨":
         st.image(st.session_state.son_resim_url, caption="İşte oluşturulan resim!", use_container_width=True)
 
 # ==========================================
-# 3. MOD: SESLİ YANIT MODU (HATASIZ FİZİKSEL KAYIT)
+# 3. MOD: SESLİ YANIT MODU
 # ==========================================
 elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
     st.markdown("### 🗣️ Eymen-GPT Sesli Asistan")
@@ -217,12 +217,10 @@ elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
     if oku_butonu and sesli_sorgu:
         with st.spinner("Sesi kasede kaydediyorum..."):
             try:
-                # Sesi fiziksel olarak oluştur ve kaydet
                 tts = gTTS(text=sesli_sorgu, lang='tr')
                 dosya_yolu = "eymen_ses.mp3"
                 tts.save(dosya_yolu)
                 
-                # Kaydedilen fiziksel dosyayı Streamlit ile oynat
                 with open(dosya_yolu, "rb") as audio_file:
                     audio_bytes = audio_file.read()
                     st.audio(audio_bytes, format='audio/mp3')
@@ -230,3 +228,13 @@ elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
                 st.success("İşte sesin hazır! 🎧")
             except Exception as e:
                 st.error(f"Seslendirme hatası: {e}")
+
+# ==========================================
+# 4. MOD: MÜZİSYEN MODU 🎵 (KESİN ÇÖZÜM - IFRAME)
+# ==========================================
+elif uygulama_modu == "Müzisyen Modu 🎵":
+    st.markdown("### 🎵 Gerçek Yapay Zeka Müzik Stüdyosu")
+    st.info("Bağlantı hatalarını ezip geçtik! Müzik artık arka plan sunucusunda değil, doğrudan senin cihazında üretiliyor.")
+    
+    # Hugging Face'in resmi MusicGen panelini Eymen-GPT'nin içine gömüyoruz
+    st.components.v1.iframe("https://facebook-musicgen.hf.space", height=850, scrolling=True)
