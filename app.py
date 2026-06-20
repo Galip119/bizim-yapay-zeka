@@ -230,11 +230,21 @@ elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
                 st.error(f"Seslendirme hatası: {e}")
 
 # ==========================================
-# 4. MOD: MÜZİSYEN MODU 🎵 (KESİN ÇÖZÜM - IFRAME)
+# 4. MOD: MÜZİSYEN MODU 🎵 (PORTAL ÇÖZÜMÜ)
 # ==========================================
 elif uygulama_modu == "Müzisyen Modu 🎵":
     st.markdown("### 🎵 Gerçek Yapay Zeka Müzik Stüdyosu")
-    st.info("Bağlantı hatalarını ezip geçtik! Müzik artık arka plan sunucusunda değil, doğrudan senin cihazında üretiliyor.")
+    st.warning("Hugging Face sunucuları 'Gömülü' (Iframe) ekran kullanımını güvenlik gerekçesiyle yasakladı.")
+    st.info("Ama dert değil! Aşağıdaki güvenli geçidi kullanarak orijinal MusicGen stüdyosuna gidebilir ve şarkını bedavaya üretebilirsin.")
     
-    # Hugging Face'in resmi MusicGen panelini Eymen-GPT'nin içine gömüyoruz
-    st.components.v1.iframe("https://facebook-musicgen.hf.space", height=850, scrolling=True)
+    # HTML ile şık bir buton oluşturuyoruz
+    st.markdown(
+        """
+        <a href="https://huggingface.co/spaces/facebook/MusicGen" target="_blank" style="text-decoration: none;">
+            <div style="width:100%; padding:15px; background-color:#FF4B4B; color:white; text-align:center; border-radius:10px; font-size:18px; font-weight:bold; cursor:pointer;">
+                🎸 MusicGen Stüdyosunu Aç (Yeni Sekme)
+            </div>
+        </a>
+        """,
+        unsafe_allow_html=True
+    )
