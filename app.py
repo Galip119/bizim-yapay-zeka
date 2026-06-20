@@ -7,6 +7,9 @@ import re
 import urllib.parse
 import os
 from gtts import gTTS
+import numpy as np
+import scipy.io.wavfile as wav
+import io
 
 # Dosya okuma kütüphaneleri
 from pypdf import PdfReader
@@ -51,7 +54,6 @@ MODELS = {
 # --- SOL MENÜ VE MOD SEÇİMİ ---
 st.sidebar.title("⚙️ Ayarlar")
 
-# 4 Modun hepsi burada!
 uygulama_modu = st.sidebar.radio("Mod Seçimi:", ["Sohbet & Analiz 💬", "Ressam Modu 🎨", "Sesli Yanıt Modu 🗣️", "Müzisyen Modu 🎵"])
 
 st.sidebar.markdown("---")
@@ -205,7 +207,7 @@ elif uygulama_modu == "Ressam Modu 🎨":
         st.image(st.session_state.son_resim_url, caption="İşte oluşturulan resim!", use_container_width=True)
 
 # ==========================================
-# 3. MOD: SESLİ YANIT MODU
+# 3. MOD: SESLİ YANIT MODU 
 # ==========================================
 elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
     st.markdown("### 🗣️ Eymen-GPT Sesli Asistan")
@@ -230,21 +232,44 @@ elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
                 st.error(f"Seslendirme hatası: {e}")
 
 # ==========================================
-# 4. MOD: MÜZİSYEN MODU 🎵 (PORTAL ÇÖZÜMÜ)
+# 4. MOD: MİNİ MÜZİK MOTORU 🎵 (8-BİT RETRO)
 # ==========================================
 elif uygulama_modu == "Müzisyen Modu 🎵":
-    st.markdown("### 🎵 Gerçek Yapay Zeka Müzik Stüdyosu")
-    st.warning("Hugging Face sunucuları 'Gömülü' (Iframe) ekran kullanımını güvenlik gerekçesiyle yasakladı.")
-    st.info("Ama dert değil! Aşağıdaki güvenli geçidi kullanarak orijinal MusicGen stüdyosuna gidebilir ve şarkını bedavaya üretebilirsin.")
+    st.markdown("### 🎵 Eymen-GPT Mini Müzik Motoru")
+    st.write("Yazdığın metni matematiksel dalgalara çevirip tamamen internetsiz, 8-bit retro oyun müziği üretiyorum!")
     
-    # HTML ile şık bir buton oluşturuyoruz
-    st.markdown(
-        """
-        <a href="https://huggingface.co/spaces/facebook/MusicGen" target="_blank" style="text-decoration: none;">
-            <div style="width:100%; padding:15px; background-color:#FF4B4B; color:white; text-align:center; border-radius:10px; font-size:18px; font-weight:bold; cursor:pointer;">
-                🎸 MusicGen Stüdyosunu Aç (Yeni Sekme)
-            </div>
-        </a>
-        """,
-        unsafe_allow_html=True
-    )
+    muzik_sorgu = st.text_input("Nasıl bir his istiyorsun? (Örn: Uzay, Macera, Robot)", key=f"mini_muzik_{st.session_state.form_num}")
+    uret_butonu = st.button("🎹 8-Bit Müziği Üret")
+
+    if uret_butonu and muzik_sorgu:
+        with st.spinner("Frekanslar hesaplanıyor, dalgalar oluşturuluyor..."):
+            try:
+                sample_rate = 44100
+                duration_per_note = 0.3 
+                t = np.linspace(0, duration_per_note, int(sample_rate * duration_per_note), endpoint=False)
+                
+                notalar = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25]
+                ses_verisi = np.array([])
+                
+                for harf in muzik_sorgu:
+                    nota_indeksi = ord(harf) % len(notalar)
+                    frekans = notalar[nota_indeksi]
+                    
+                    dalga = 0.5 * np.sign(np.sin(2 * np.pi * frekans * t))
+                    
+                    zarf = np.exp(-3 * t)
+                    dalga = dalga * zarf
+                    
+                    ses_verisi = np.concatenate((ses_verisi, dalga))
+                
+                ses_verisi = np.int16(ses_verisi / np.max(np.abs(ses_verisi)) * 32767)
+                
+                byte_io = io.BytesIO()
+                wav.write(byte_io, sample_rate, ses_verisi)
+                muzik_dosyasi = byte_io.getvalue()
+                
+                st.audio(muzik_dosyasi, format='audio/wav')
+                st.success("Müzik başarıyla sentezlendi! Tamamen yerel ve hatasız. 🎧")
+                
+            except Exception as e:
+                st.error(f"Sentezleyici Hatası: {e}")
