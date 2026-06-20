@@ -8,3 +8,5 @@ beautifulsoup4
 pillow
 pytesseract
 gTTS
+numpy
+scipy
