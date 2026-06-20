@@ -20,6 +20,7 @@ st.set_page_config(layout="centered", page_title="Eymen-GPT Gelişmiş")
 
 # --- OTURUM HAFIZASI (SESSION STATE) KONTROLLERİ ---
 if "form_num" not in st.session_state: st.session_state.form_num = 0
+if "mesaj_gecmisi" not in st.session_state: st.session_state.mesaj_gecmisi = [] # SOHBET HAFIZASI EKLENDİ
 if "cevap_hazir" not in st.session_state: st.session_state.cevap_hazir = False
 if "son_cevap" not in st.session_state: st.session_state.son_cevap = ""
 if "son_dusunce" not in st.session_state: st.session_state.son_dusunce = ""
@@ -49,26 +50,38 @@ MODELS = {
 # --- SOL MENÜ VE MOD SEÇİMİ ---
 st.sidebar.title("⚙️ Ayarlar")
 
-uygulama_modu = st.sidebar.radio("Mod Seçimi:", ["Sohbet & Analiz 💬", "Ressam Modu 🎨", "Müzisyen Modu 🎵"])
+# 4. Mod Eklendi!
+uygulama_modu = st.sidebar.radio("Mod Seçimi:", ["Sohbet & Analiz 💬", "Ressam Modu 🎨", "Müzisyen Modu 🎵", "Sesli Yanıt Modu 🗣️"])
 
 st.sidebar.markdown("---")
 st.sidebar.write("Kotası biten modelden otomatik olarak diğerine geçilir.")
 secilen_model_adi = st.sidebar.selectbox("Bir Model Seçin:", list(MODELS.keys()))
 secilen_model_id = MODELS[secilen_model_adi]
 
+# Hafızayı temizleme butonu
+if st.sidebar.button("🧹 Sohbet Geçmişini Temizle"):
+    st.session_state.mesaj_gecmisi = []
+    st.rerun()
+
 st.title("Eymen-GPT 🚀")
 
 # ==========================================
-# 1. MOD: SOHBET VE ANALİZ
+# 1. MOD: SOHBET VE ANALİZ (HAFIZALI)
 # ==========================================
 if uygulama_modu == "Sohbet & Analiz 💬":
+    
+    # Geçmiş mesajları ekranda göster
+    for mesaj in st.session_state.mesaj_gecmisi:
+        with st.chat_message(mesaj["role"]):
+            st.markdown(mesaj["content"])
+
+    st.markdown("---")
+    
     col1, col2 = st.columns([4, 1])
-
     with col1:
-        sorgu = st.text_input("Bana bir şeyler sor veya dosya analiz et:", placeholder="Mesajınızı yazın...", label_visibility="collapsed", key=metin_anahtari)
-
+        sorgu = st.chat_input("Bana bir şeyler sor...", key=metin_anahtari)
     with col2:
-        yuklenen_dosya = st.file_uploader("Dosya", type=["txt", "pdf", "docx", "xlsx", "py", "html", "htm", "json", "xml", "png", "jpg", "jpeg"], label_visibility="collapsed", key=dosya_anahtari)
+        yuklenen_dosya = st.file_uploader("Dosya Analizi", type=["txt", "pdf", "docx", "xlsx", "py", "html", "htm", "json", "xml", "png", "jpg", "jpeg"], label_visibility="collapsed", key=dosya_anahtari)
 
     dosya_icerigi = ""
 
@@ -112,9 +125,14 @@ if uygulama_modu == "Sohbet & Analiz 💬":
             if dosya_icerigi: st.info(f"📎 {yuklenen_dosya.name} başarıyla okundu.")
         except Exception as e: st.error(f"Dosya okunurken hata oluştu: {e}")
 
-    gonder_butonu = st.button("Gönder")
+    if sorgu or dosya_icerigi:
+        
+        # Kullanıcının sorusunu ekranda anında göster ve hafızaya kaydet
+        if sorgu:
+            st.session_state.mesaj_gecmisi.append({"role": "user", "content": sorgu})
+            with st.chat_message("user"):
+                st.markdown(sorgu)
 
-    if gonder_butonu and (sorgu or dosya_icerigi):
         with st.spinner("Eymen-GPT düşünüyor..."):
             try:
                 arama_metni = ""
@@ -125,12 +143,18 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                     except: st.warning("İnternet araması yapılamadı.")
                 
                 sistem_mesaji = "Sen çok gelişmiş bir Eymen-GPT asistanısın. Herhangi bir cevap vermeden önce, akıl yürütmeni MUTLAKA <dusunce> ve </dusunce> etiketleri arasına yaz. Düşünce kısmını bitirdikten sonra DIŞINA nihai cevabı yaz."
-                kullanici_mesaji = ""
                 
+                kullanici_mesaji = ""
                 if arama_metni: kullanici_mesaji += f"--- İNTERNET ARAMASI ---\n{arama_metni}\n\n"
                 if dosya_icerigi: kullanici_mesaji += f"--- DOSYA İÇERİĞİ ---\n{dosya_icerigi[:35000]}\n\n"
                 if sorgu: kullanici_mesaji += f"Soru: {sorgu}"
                 else: kullanici_mesaji += "Soru: Lütfen yüklediğim bu dosyayı detaylıca analiz et ve özetle."
+
+                # Geçmiş mesajları API'ye gönderilecek listeye ekliyoruz
+                api_mesajlari = [{"role": "system", "content": sistem_mesaji}]
+                for msg in st.session_state.mesaj_gecmisi[:-1]: # Son mesajı aşağıda ekleyeceğiz
+                    api_mesajlari.append(msg)
+                api_mesajlari.append({"role": "user", "content": kullanici_mesaji})
 
                 yedek_modeller = [secilen_model_id] + [m for m in MODELS.values() if m != secilen_model_id]
                 basarili_oldu = False
@@ -138,7 +162,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                 for aktif_model in yedek_modeller:
                     try:
                         response = client.chat.completions.create(
-                            messages=[{"role": "system", "content": sistem_mesaji}, {"role": "user", "content": kullanici_mesaji}],
+                            messages=api_mesajlari,
                             model=aktif_model, temperature=0.6
                         )
                         basarili_oldu = True
@@ -155,17 +179,16 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                         dusunce_blogu = match.group(1).strip()
                         temiz_cevap = re.sub(r'<(?:dusunce|düşünce|thinking)>.*?</(?:dusunce|düşünce|thinking)>', '', ham_cevap, flags=re.DOTALL | re.IGNORECASE).strip()
 
-                    st.session_state.son_cevap = temiz_cevap
-                    st.session_state.son_dusunce = dusunce_blogu
-                    st.session_state.cevap_hazir = True
-                    st.session_state.form_num += 1
-                    st.rerun()
-            except Exception as e: st.error(f"Bir hata oluştu: {e}")
+                    # Asistanın cevabını hafızaya kaydet ve ekrana bas
+                    st.session_state.mesaj_gecmisi.append({"role": "assistant", "content": temiz_cevap})
+                    
+                    with st.chat_message("assistant"):
+                        if dusunce_blogu:
+                            with st.expander("🧠 Eymen-GPT'nin Düşünme Adımlarını Göster"): 
+                                st.write(dusunce_blogu)
+                        st.markdown(temiz_cevap)
 
-    if st.session_state.cevap_hazir:
-        if st.session_state.son_dusunce:
-            with st.expander("🧠 Eymen-GPT'nin Düşünme Adımlarını Göster"): st.write(st.session_state.son_dusunce)
-        st.markdown(st.session_state.son_cevap)
+            except Exception as e: st.error(f"Bir hata oluştu: {e}")
 
 # ==========================================
 # 2. MOD: RESSAM MODU
@@ -220,3 +243,25 @@ elif uygulama_modu == "Müzisyen Modu 🎵":
                 st.error("Bağlantı Hatası: Streamlit ana sunucuya bağlanamadı. Lütfen sağ alttaki 'Manage App' kısmından uygulamayı 'Reboot' et veya sayfayı yenile.")
             except Exception as e:
                 st.error(f"Beklenmeyen bir hata: {e}")
+
+# ==========================================
+# 4. MOD: SESLİ YANIT MODU (YENİ VE HATASIZ)
+# ==========================================
+elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
+    st.markdown("### 🗣️ Eymen-GPT Sesli Asistan")
+    st.write("Yazdığın her şeyi gerçekçi bir sesle sana okuyabilirim.")
+    
+    sesli_sorgu = st.text_input("Ne duymak istersin?", placeholder="Örn: Bana yapay zekayı anlat", key=f"sesli_input_{st.session_state.form_num}")
+    oku_butonu = st.button("🎙️ Seslendir")
+
+    if oku_butonu and sesli_sorgu:
+        with st.spinner("Ses dosyası hazırlanıyor..."):
+            try:
+                # Hiçbir şifre veya kütüphane gerektirmeyen Google TTS altyapısı!
+                guvenli_metin = urllib.parse.quote(sesli_sorgu)
+                tts_url = f"https://translate.google.com/translate_tts?ie=UTF-8&tl=tr&client=tw-ob&q={guvenli_metin}"
+                
+                st.audio(tts_url, format='audio/mp3')
+                st.success("İşte sesin hazır! 🎧")
+            except Exception as e:
+                st.error(f"Seslendirme hatası: {e}")
