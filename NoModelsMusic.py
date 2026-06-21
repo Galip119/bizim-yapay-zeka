@@ -3,8 +3,7 @@ import scipy.io.wavfile as wav
 import io
 
 # =====================================================================
-# NOMODELSMUSIC V3 - ULTIMATE MEGA STUDIO EDITION 
-# SIFIR YAPAY ZEKA MODELİ - %100 MATEMATİKSEL FİZİK MODELLEME
+# NOMODELSMUSIC V4 - SÜRE AYARLI & HATASIZ MEGA STÜDYO 
 # =====================================================================
 
 class DSP_Effects:
@@ -75,15 +74,19 @@ class NoModelsMusicEngine:
     def noise_white(self, t): return np.random.uniform(-1, 1, len(t))
     def pulse(self, f, t, width=0.3): return np.where((t * f) % 1 < width, 1.0, -1.0)
 
+    # Broadcast hatasını çözen GÜVENLİ ADSR sistemi
     def adsr(self, t, a, d, s, r):
-        zaman_a, zaman_d, zaman_r = int(a * self.sr), int(d * self.sr), int(r * self.sr)
-        zarf = np.ones_like(t)
         toplam = len(t)
-        if zaman_a > 0: zarf[:zaman_a] = np.linspace(0, 1, zaman_a)
-        if zaman_d > 0 and zaman_a + zaman_d < toplam:
+        zaman_a = min(int(a * self.sr), toplam)
+        zaman_d = min(int(d * self.sr), toplam - zaman_a)
+        zaman_r = min(int(r * self.sr), toplam)
+
+        zarf = np.ones_like(t) * s
+        if zaman_a > 0:
+            zarf[:zaman_a] = np.linspace(0, 1, zaman_a)
+        if zaman_d > 0:
             zarf[zaman_a:zaman_a+zaman_d] = np.linspace(1, s, zaman_d)
-            zarf[zaman_a+zaman_d:] = s
-        if zaman_r > 0 and toplam - zaman_r > 0:
+        if zaman_r > 0:
             zarf[-zaman_r:] = np.linspace(s, 0, zaman_r)
         return zarf
 
@@ -147,7 +150,10 @@ class NoModelsMusicEngine:
         return ses * np.exp(-3 * t) * 1.2
     def upright_piano(self, f, t):
         if f == 0: return 0
-        ses = self.sine(f, t) + 0.5*self.triangle(f*2, t) + 0.1*self.noise_white(t[:len(t)//10])
+        noise = np.zeros_like(t)
+        kesit = len(t)//10
+        if kesit > 0: noise[:kesit] = self.noise_white(t[:kesit])
+        ses = self.sine(f, t) + 0.5*self.triangle(f*2, t) + 0.1*noise
         return ses * np.exp(-4 * t) * 1.0
     def rhodes_piano(self, f, t):
         if f == 0: return 0
@@ -225,7 +231,10 @@ class NoModelsMusicEngine:
     # --- GİTARLAR VE TELLER ---
     def acoustic_guitar(self, f, t):
         if f == 0: return 0
-        return (self.triangle(f, t) + 0.1*self.noise_white(t[:len(t)//20])) * np.exp(-5 * t) * 0.9
+        noise = np.zeros_like(t)
+        kesit = len(t)//20
+        if kesit > 0: noise[:kesit] = self.noise_white(t[:kesit])
+        return (self.triangle(f, t) + 0.1 * noise) * np.exp(-5 * t) * 0.9
     def nylon_guitar(self, f, t):
         if f == 0: return 0
         return self.sine(f, t) * np.exp(-4 * t) * 1.0
@@ -289,7 +298,7 @@ class NoModelsMusicEngine:
         if f == 0: return 0
         return self.saw(f, t) * self.adsr(t, 0.2, 0.2, 0.8, 0.2) * 0.7
 
-    # --- SYNTH LEADLER VE PADLER (ELEKTRONİK) ---
+    # --- SYNTH LEADLER VE PADLER ---
     def saw_lead(self, f, t):
         if f == 0: return 0
         return self.saw(f, t) * self.adsr(t, 0.05, 0.1, 0.8, 0.2) * 0.5
@@ -423,14 +432,17 @@ class NoModelsMusicEngine:
         return noise * pervane * self.adsr(t, 0.5, 1.0, 0.8, 1.0) * 1.5
 
     # =====================================================================
-    # ANA MOTOR: RENDER (DEVASA UZUN ŞARKI VE KANALLAR)
+    # ANA MOTOR: DAKİKA DESTEKLİ RENDER
     # =====================================================================
-    def render_sarki(self, sarki_verisi):
-        tekrar_sayisi = 128 # 128 Loop x 16 = Dev gibi parça
+    def render_sarki(self, sarki_verisi, hedef_dakika=2):
         tempo = sarki_verisi.get("tempo", 120)
         adim_suresi = (60.0 / tempo) / 4.0
-        samples_per_step = int(self.sr * adim_suresi)
+        loop_suresi = 16 * adim_suresi
         
+        # Kullanıcının seçtiği dakikaya göre kaç kere döneceğini hesaplıyoruz
+        tekrar_sayisi = max(4, int((hedef_dakika * 60) / loop_suresi))
+        
+        samples_per_step = int(self.sr * adim_suresi)
         toplam_samples = tekrar_sayisi * 16 * samples_per_step
         master_ses = np.zeros(toplam_samples, dtype=np.float32)
         
@@ -439,7 +451,6 @@ class NoModelsMusicEngine:
             if len(liste) < 16: liste += ["-"] * (16 - len(liste))
             return liste
 
-        # Kütüphanedeki Yüzlerce Enstrümanın Eşleşmesi (True = Saniye Bazlı/Davul-FX, False = Nota Bazlı)
         enstrumanlar = {
             "kick_808": (self.kick_808, True), "kick_909": (self.kick_909, True), "kick_acoustic": (self.kick_acoustic, True),
             "kick_punchy": (self.kick_punchy, True), "kick_lofi": (self.kick_lofi, True), "kick_techno": (self.kick_techno, True), "kick_deep": (self.kick_deep, True),
@@ -492,12 +503,12 @@ class NoModelsMusicEngine:
         t_dizi = np.linspace(0, adim_suresi, samples_per_step, endpoint=False)
 
         for loop_idx in range(tekrar_sayisi):
-            cal_intro = loop_idx < 16
-            cal_build = loop_idx >= 16 and loop_idx < 32
-            cal_drop = loop_idx >= 32 and loop_idx < 64
-            cal_bridge = loop_idx >= 64 and loop_idx < 80
-            cal_drop2 = loop_idx >= 80 and loop_idx < 112
-            cal_outro = loop_idx >= 112
+            cal_intro = loop_idx < int(tekrar_sayisi * 0.15)
+            cal_build = loop_idx >= int(tekrar_sayisi * 0.15) and loop_idx < int(tekrar_sayisi * 0.3)
+            cal_drop = loop_idx >= int(tekrar_sayisi * 0.3) and loop_idx < int(tekrar_sayisi * 0.6)
+            cal_bridge = loop_idx >= int(tekrar_sayisi * 0.6) and loop_idx < int(tekrar_sayisi * 0.75)
+            cal_drop2 = loop_idx >= int(tekrar_sayisi * 0.75) and loop_idx < int(tekrar_sayisi * 0.9)
+            cal_outro = loop_idx >= int(tekrar_sayisi * 0.9)
             
             davul_aktif = cal_build or cal_drop or cal_drop2
             bas_aktif = cal_drop or cal_drop2 or (cal_bridge and loop_idx % 2 == 0)
@@ -526,15 +537,10 @@ class NoModelsMusicEngine:
                 
                 master_ses[zaman_basla:zaman_bitis] += katman
 
-        build_bitis_sample = 32 * 16 * samples_per_step
-        build_basla_sample = 28 * 16 * samples_per_step 
-        if build_bitis_sample < len(master_ses):
-            sweep_uzunluk = build_bitis_sample - build_basla_sample
-            t_sweep = np.linspace(0, sweep_uzunluk / self.sr, sweep_uzunluk)
-            master_ses[build_basla_sample:build_bitis_sample] += self.noise_sweep(t_sweep)
-
+        # Fade Out ve Hard Limiter
         fade_out_samples = int(self.sr * 10) 
-        master_ses[-fade_out_samples:] *= np.linspace(1, 0, fade_out_samples)
+        if fade_out_samples < len(master_ses):
+            master_ses[-fade_out_samples:] *= np.linspace(1, 0, fade_out_samples)
         
         max_val = np.max(np.abs(master_ses))
         if max_val > 0:
@@ -546,6 +552,6 @@ class NoModelsMusicEngine:
         wav.write(byte_io, self.sr, master_ses)
         return byte_io.getvalue()
 
-def motoru_calistir(sarki_verisi):
+def motoru_calistir(sarki_verisi, hedef_dakika=2):
     motor = NoModelsMusicEngine()
-    return motor.render_sarki(sarki_verisi)
+    return motor.render_sarki(sarki_verisi, hedef_dakika)
