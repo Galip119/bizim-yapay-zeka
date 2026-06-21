@@ -207,17 +207,22 @@ elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
                 st.error(f"Seslendirme hatası: {e}")
 
 # ==========================================
-# 4. MOD: NOMODELSMUSIC V3 MEGA STÜDYO 🎵
+# 4. MOD: NOMODELSMUSIC V4 MEGA STÜDYO 🎵
 # ==========================================
 elif uygulama_modu == "Müzisyen Modu 🎵":
-    st.markdown("### 🎵 NoModelsMusic V3 Mega Stüdyo")
-    st.write("100'den fazla ses, hayvanlar, doğa efektleri, oyun sesleri ve devasa uzunlukta aranjmanlar!")
+    st.markdown("### 🎵 NoModelsMusic V4 Mega Stüdyo")
+    st.write("100'den fazla ses, hayvanlar, doğa efektleri ve devasa şarkılar. Üstelik artık şarkının kaç dakika olacağını SEN seçiyorsun!")
     
-    muzik_sorgu = st.text_input("Şarkıyı ve ambiyansı tarif et:", placeholder="Örn: Gök gürültülü yağmurda çalan epik piyano, kedi miyavlamalı EDM...", key=f"nomodels_{st.session_state.form_num}")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        muzik_sorgu = st.text_input("Şarkıyı ve ambiyansı tarif et:", placeholder="Örn: Yağmur altında kedi miyavlamalı hüzünlü piyano...", key=f"nomodels_{st.session_state.form_num}")
+    with col2:
+        sarki_suresi = st.number_input("Süre (Dakika)", min_value=1, max_value=10, value=2, step=1)
+        
     uret_butonu = st.button("🎧 Mega Stüdyoyu Başlat")
 
     if uret_butonu and muzik_sorgu:
-        with st.spinner("Eymen-GPT orkestrayı kuruyor, NoModelsMusic devasa şarkıyı renderlıyor..."):
+        with st.spinner(f"Eymen-GPT orkestrayı kuruyor, NoModelsMusic tam {sarki_suresi} dakikalık parçayı renderlıyor..."):
             try:
                 sistem_mesaji = """Sen usta bir prodüktörsün. Kullanıcının verdiği hisse göre 16 adımlık BİR MÜZİK İSKELETİ kur.
                 SADECE GEÇERLİ JSON YAZ.
@@ -259,15 +264,15 @@ elif uygulama_modu == "Müzisyen Modu 🎵":
                 sarki_verisi = json.loads(json_str)
                 
                 import NoModelsMusic
-                ses_dosyasi = NoModelsMusic.motoru_calistir(sarki_verisi)
+                ses_dosyasi = NoModelsMusic.motoru_calistir(sarki_verisi, hedef_dakika=sarki_suresi)
                 
                 st.audio(ses_dosyasi, format='audio/wav')
-                st.success(f"🎵 NoModelsMusic Mega Fabrikası Parçayı Hazırladı! (Tempo: {sarki_verisi.get('tempo', 120)} BPM)")
+                st.success(f"🎵 NoModelsMusic {sarki_suresi} Dakikalık Parçayı Hazırladı! (Tempo: {sarki_verisi.get('tempo', 120)} BPM)")
                 
                 with st.expander("🛠️ Eymen'in Dev Stüdyo Kayıtlarını İncele"):
                     st.json(sarki_verisi)
                     
             except json.JSONDecodeError:
-                st.error("Yapay zeka devasa enstrümanları dizkerken hata yaptı. Lütfen tekrar dene.")
+                st.error("Yapay zeka devasa enstrümanları dizerken hata yaptı. Lütfen tekrar dene.")
             except Exception as e:
                 st.error(f"Sistem Hatası: {e}")
