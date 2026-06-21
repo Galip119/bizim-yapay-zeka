@@ -5,9 +5,6 @@ import json
 import urllib.parse
 import os
 from gtts import gTTS
-import numpy as np
-import scipy.io.wavfile as wav
-import io
 import re
 
 from pypdf import PdfReader
@@ -114,7 +111,6 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                     dosya_icerigi = pytesseract.image_to_string(resim, lang="tur+eng")
                 except:
                     st.warning("OCR sistemi tam çalışmadığı için yazı okunamadı.")
-            
             if dosya_icerigi: st.info(f"📎 {yuklenen_dosya.name} başarıyla okundu.")
         except Exception as e: st.error(f"Dosya okunurken hata oluştu: {e}")
 
@@ -134,7 +130,6 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                     except: st.warning("İnternet araması yapılamadı.")
                 
                 sistem_mesaji = "Sen çok gelişmiş bir Eymen-GPT asistanısın. Herhangi bir cevap vermeden önce, akıl yürütmeni MUTLAKA <dusunce> ve </dusunce> etiketleri arasına yaz. Düşünce kısmını bitirdikten sonra DIŞINA nihai cevabı yaz."
-                
                 kullanici_mesaji = ""
                 if arama_metni: kullanici_mesaji += f"--- İNTERNET ARAMASI ---\n{arama_metni}\n\n"
                 if dosya_icerigi: kullanici_mesaji += f"--- DOSYA İÇERİĞİ ---\n{dosya_icerigi[:35000]}\n\n"
@@ -184,18 +179,14 @@ if uygulama_modu == "Sohbet & Analiz 💬":
 # ==========================================
 elif uygulama_modu == "Ressam Modu 🎨":
     st.markdown("### 🎨 Hayal Gücünü Ekrana Yansıt")
-    
     resim_sorgu = st.text_input("Neyin resmini çizmek istersin?", placeholder="Örn: Yağmurlu bir gecede yürüyen fütüristik kedi", key=f"resim_input_{st.session_state.form_num}")
-    cizdir_butonu = st.button("🖼️ Resmi Oluştur")
-    
-    if cizdir_butonu and resim_sorgu:
+    if st.button("🖼️ Resmi Oluştur") and resim_sorgu:
         with st.spinner("Tuval hazırlanıyor, boyalar karıştırılıyor..."):
             guvenli_sorgu = urllib.parse.quote(resim_sorgu)
             st.session_state.son_resim_url = f"https://image.pollinations.ai/prompt/{guvenli_sorgu}?width=1024&height=1024&nologo=true"
             st.session_state.resim_hazir = True
             st.session_state.form_num += 1
             st.rerun()
-            
     if st.session_state.resim_hazir and st.session_state.son_resim_url:
         st.image(st.session_state.son_resim_url, caption="İşte oluşturulan resim!", use_container_width=True)
 
@@ -204,153 +195,79 @@ elif uygulama_modu == "Ressam Modu 🎨":
 # ==========================================
 elif uygulama_modu == "Sesli Yanıt Modu 🗣️":
     st.markdown("### 🗣️ Eymen-GPT Sesli Asistan")
-    st.write("Yazdığın her şeyi gerçekçi bir sesle sana okuyabilirim.")
-    
     sesli_sorgu = st.text_input("Ne duymak istersin?", placeholder="Örn: Bana yıldızları anlat", key=f"sesli_input_{st.session_state.form_num}")
-    oku_butonu = st.button("🎙️ Seslendir")
-
-    if oku_butonu and sesli_sorgu:
+    if st.button("🎙️ Seslendir") and sesli_sorgu:
         with st.spinner("Sesi kasede kaydediyorum..."):
             try:
                 tts = gTTS(text=sesli_sorgu, lang='tr')
-                dosya_yolu = "eymen_ses.mp3"
-                tts.save(dosya_yolu)
-                
-                with open(dosya_yolu, "rb") as audio_file:
-                    audio_bytes = audio_file.read()
-                    st.audio(audio_bytes, format='audio/mp3')
-                
-                st.success("İşte sesin hazır! 🎧")
+                tts.save("eymen_ses.mp3")
+                with open("eymen_ses.mp3", "rb") as audio_file:
+                    st.audio(audio_file.read(), format='audio/mp3')
             except Exception as e:
                 st.error(f"Seslendirme hatası: {e}")
 
 # ==========================================
-# 4. MOD: 10 KANALLI DEV MÜZİK MOTORU 🎵
+# 4. MOD: NOMODELSMUSIC V3 MEGA STÜDYO 🎵
 # ==========================================
 elif uygulama_modu == "Müzisyen Modu 🎵":
-    st.markdown("### 🎵 Eymen-GPT 10 Kanallı Dev Stüdyo")
-    st.write("Sınırsız ses aralığı (C1'den B7'ye), 10 farklı enstrüman ve çökmeyen optimize sistem!")
+    st.markdown("### 🎵 NoModelsMusic V3 Mega Stüdyo")
+    st.write("100'den fazla ses, hayvanlar, doğa efektleri, oyun sesleri ve devasa uzunlukta aranjmanlar!")
     
-    muzik_sorgu = st.text_input("Şarkının tarzı ve hissi nedir?", placeholder="Örn: Epik bir film müziği, kopmalık EDM veya karanlık trap rap...", key=f"dev_muzik_{st.session_state.form_num}")
-    uret_butonu = st.button("🎧 Orkestrayı Başlat")
+    muzik_sorgu = st.text_input("Şarkıyı ve ambiyansı tarif et:", placeholder="Örn: Gök gürültülü yağmurda çalan epik piyano, kedi miyavlamalı EDM...", key=f"nomodels_{st.session_state.form_num}")
+    uret_butonu = st.button("🎧 Mega Stüdyoyu Başlat")
 
     if uret_butonu and muzik_sorgu:
-        with st.spinner("Eymen-GPT devasa stüdyoyu kuruyor... (Lütfen bekleyin)"):
+        with st.spinner("Eymen-GPT orkestrayı kuruyor, NoModelsMusic devasa şarkıyı renderlıyor..."):
             try:
-                notalar_listesi = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-                notalar_sozlugu = {"-": 0.0}
-                for oktav in range(1, 8):
-                    for i, nota in enumerate(notalar_listesi):
-                        n = (oktav - 4) * 12 + (i - 9) 
-                        notalar_sozlugu[f"{nota}{oktav}"] = 440.0 * (2.0 ** (n / 12.0))
+                sistem_mesaji = """Sen usta bir prodüktörsün. Kullanıcının verdiği hisse göre 16 adımlık BİR MÜZİK İSKELETİ kur.
+                SADECE GEÇERLİ JSON YAZ.
+                Kullanabileceğin Kanallar:
+                - Kick/Davul: "kick_808", "kick_909", "kick_acoustic", "kick_punchy", "kick_lofi", "kick_techno", "kick_deep"
+                - Trampet/Clap: "snare_acoustic", "snare_electronic", "snare_808", "snare_trap", "clap_basic", "clap_layered", "rimshot"
+                - Zil/Hihat: "hihat_closed", "hihat_open", "hihat_808", "hihat_trap", "crash_cymbal", "ride_cymbal", "splash_cymbal"
+                - Perküsyon: "tom_high", "tom_mid", "tom_low", "bongo_high", "bongo_low", "cowbell", "woodblock", "shaker", "tambourine", "triangle_perc", "claves", "guiro", "maracas"
+                - Bas (C1-B3): "sub_bass", "slap_bass", "synth_bass", "reese_bass", "acid_bass", "fm_bass", "upright_bass", "fretless_bass", "moog_bass", "wobble_bass"
+                - Piyano/Tuşlu (C3-B5): "grand_piano", "upright_piano", "rhodes_piano", "wurlitzer", "dx7_piano", "clavinet", "harpsichord", "celesta", "church_organ", "hammond_organ", "reed_organ"
+                - Yaylı/Nefesli (C3-B6): "violin", "cello", "contrabass", "pizzicato", "harp", "timpani", "brass_section", "french_horn", "trumpet", "trombone", "tuba", "synth_strings", "mellotron", "flute_acoustic", "clarinet", "oboe", "bassoon", "piccolo", "recorder", "pan_flute", "sax_alto", "sax_tenor", "sax_baritone"
+                - Gitar (C2-B5): "acoustic_guitar", "nylon_guitar", "electric_clean", "electric_overdrive", "electric_distortion", "electric_fuzz", "electric_muted", "banjo", "ukulele", "sitar"
+                - Elektronik Lead/Pad (C3-B7): "saw_lead", "square_lead", "sine_pluck", "trance_gate_pad", "warm_pad", "choir_pad_synth", "sweep_pad", "scifi_fx", "arp_8bit", "chiptune_square", "hoover_lead", "supersaw"
+                - Doğa/Ambiyans (E): "wind_howl", "rain_drops", "ocean_waves", "thunder_strike", "fire_crackle"
+                - Hayvanlar (E): "bird_chirp", "dog_bark", "cat_meow", "cricket_chirp", "frog_croak", "wolf_howl", "fly_buzz"
+                - Oyun FX (E): "fx_laser_pew", "fx_coin_pickup", "fx_jump", "fx_explosion", "fx_helicopter"
 
-                sistem_mesaji = """Sen çılgın bir müzik dehasısın. Kullanıcının verdiği hisse göre tam 16 adımlık bir müzik iskeleti oluştur.
-                SADECE GEÇERLİ JSON FORMATINDA YAZ. Başka hiçbir kelime veya kod bloğu kullanma.
+                Örnek:
                 {
-                    "tempo": 120,
-                    "kick": ["K","-","K","-","K","-","K","-","K","-","K","-","K","-","K","-"],
-                    "snare": ["-","-","S","-","-","-","S","-","-","-","S","-","-","-","S","-"],
-                    "hihat": ["H","H","H","H","H","H","H","H","H","H","H","H","H","H","H","H"],
-                    "perc": ["-","C","-","-","-","-","-","-","-","C","-","-","-","-","-","-"],
-                    "sub_bas": ["C2","-","C2","-","C2","-","C2","-","C2","-","C2","-","C2","-","C2","-"],
-                    "slap_bas": ["-","G2","-","-","-","G2","-","-","-","G2","-","-","-","G2","-","-"],
-                    "akor_pad": ["C4","-","-","-","C4","-","-","-","C4","-","-","-","C4","-","-","-"],
-                    "arp_synth": ["C5","E5","G5","C6","C5","E5","G5","C6","C5","E5","G5","C6","C5","E5","G5","C6"],
-                    "lead_melodi": ["E5","-","-","D5","C5","-","-","B4","A4","-","-","G4","F4","-","-","E4"],
-                    "armoni": ["G5","-","-","F#5","E5","-","-","D5","C5","-","-","B4","A4","-","-","G4"]
+                    "tempo": 125,
+                    "kick_808": ["K","-","K","-","K","-","K","-","K","-","K","-","K","-","K","-"],
+                    "cat_meow": ["-","-","E","-","-","-","E","-","-","-","E","-","-","-","E","-"],
+                    "grand_piano": ["C4","-","-","-","C4","-","-","-","C4","-","-","-","C4","-","-","-"]
                 }
-                Tüm diziler KESİNLİKLE 16 elemanlı olmalı. Notalar C1-B7 arasıdır. Davullar için K, S, H, C, - kullan.
+                Tüm listeler KESİNLİKLE 16 elemanlı olmalı. Davullar ve Efektler için E, K, S vb. Notalar için C1-B7 arası.
                 """
                 
                 response = client.chat.completions.create(
                     model=secilen_model_id,
                     messages=[{"role": "system", "content": sistem_mesaji}, {"role": "user", "content": muzik_sorgu}],
-                    temperature=0.6
+                    temperature=0.8
                 )
                 
                 json_str = response.choices[0].message.content.strip()
-                
                 match = re.search(r'\{.*\}', json_str, re.DOTALL)
                 if match:
                     json_str = match.group(0)
                     
                 sarki_verisi = json.loads(json_str)
                 
-                sample_rate = 44100
-                adim_suresi = (60.0 / sarki_verisi.get("tempo", 120)) / 4.0
-                samples_per_step = int(sample_rate * adim_suresi)
-                t = np.linspace(0, adim_suresi, samples_per_step, endpoint=False)
+                import NoModelsMusic
+                ses_dosyasi = NoModelsMusic.motoru_calistir(sarki_verisi)
                 
-                def uret_kick(): return np.sin(2 * np.pi * np.linspace(120, 30, samples_per_step) * t) * np.exp(-15 * t) * 1.5
-                def uret_snare(): return np.random.uniform(-1, 1, samples_per_step) * np.exp(-25 * t) * 0.8
-                def uret_hihat(): return np.random.uniform(-1, 1, samples_per_step) * np.exp(-60 * t) * 0.3
-                def uret_perc(): return np.random.uniform(-1, 1, samples_per_step) * np.exp(-5 * t) * 0.5
+                st.audio(ses_dosyasi, format='audio/wav')
+                st.success(f"🎵 NoModelsMusic Mega Fabrikası Parçayı Hazırladı! (Tempo: {sarki_verisi.get('tempo', 120)} BPM)")
                 
-                def uret_sub_bas(f): return np.sin(2 * np.pi * f * t) * 1.0 if f > 0 else np.zeros(samples_per_step)
-                def uret_slap_bas(f): return (2 * (t * f - np.floor(t * f + 0.5))) * np.exp(-8 * t) * 0.6 if f > 0 else np.zeros(samples_per_step)
-                def uret_akor_pad(f): return 0.3 * (np.sin(2 * np.pi * f * t) + 0.5 * np.sin(2 * np.pi * (f*1.5) * t)) * np.exp(-0.5 * t) if f > 0 else np.zeros(samples_per_step)
-                def uret_arp_synth(f): return 0.4 * np.sign(np.sin(2 * np.pi * f * t)) * np.exp(-10 * t) if f > 0 else np.zeros(samples_per_step)
-                def uret_lead_melodi(f):
-                    if f == 0: return np.zeros(samples_per_step)
-                    vibrato = np.sin(2 * np.pi * 5 * t) * 3 
-                    return 0.5 * np.sin(2 * np.pi * (f + vibrato) * t) * np.exp(-2 * t)
-                def uret_armoni(f): return 0.4 * np.sin(2 * np.pi * f * t) * np.exp(-3 * t) if f > 0 else np.zeros(samples_per_step)
-
-                ana_ses = np.array([])
-                tekrar_sayisi = 8 
-                
-                def guvenli_liste(isim):
-                    liste = sarki_verisi.get(isim, ["-"]*16)
-                    if len(liste) < 16: liste += ["-"] * (16 - len(liste))
-                    return liste
-
-                kanallar = {
-                    "kick": guvenli_liste("kick"), "snare": guvenli_liste("snare"), "hihat": guvenli_liste("hihat"),
-                    "perc": guvenli_liste("perc"), "sub_bas": guvenli_liste("sub_bas"), "slap_bas": guvenli_liste("slap_bas"),
-                    "akor_pad": guvenli_liste("akor_pad"), "arp_synth": guvenli_liste("arp_synth"),
-                    "lead_melodi": guvenli_liste("lead_melodi"), "armoni": guvenli_liste("armoni")
-                }
-                
-                for loop_idx in range(tekrar_sayisi):
-                    for i in range(16):
-                        katman = np.zeros(samples_per_step)
-                        
-                        cal_davul = True if loop_idx >= 1 and loop_idx < (tekrar_sayisi - 1) else False 
-                        cal_lead = True if loop_idx >= 2 and loop_idx < (tekrar_sayisi - 1) else False 
-                        
-                        if cal_davul:
-                            if kanallar["kick"][i] == "K": katman += uret_kick()
-                            if kanallar["snare"][i] == "S": katman += uret_snare()
-                            if kanallar["hihat"][i] == "H": katman += uret_hihat()
-                            if kanallar["perc"][i] == "C": katman += uret_perc()
-                            katman += uret_slap_bas(notalar_sozlugu.get(kanallar["slap_bas"][i], 0.0))
-                        
-                        katman += uret_sub_bas(notalar_sozlugu.get(kanallar["sub_bas"][i], 0.0))
-                        katman += uret_akor_pad(notalar_sozlugu.get(kanallar["akor_pad"][i], 0.0))
-                        katman += uret_arp_synth(notalar_sozlugu.get(kanallar["arp_synth"][i], 0.0))
-                        
-                        if cal_lead:
-                            katman += uret_lead_melodi(notalar_sozlugu.get(kanallar["lead_melodi"][i], 0.0))
-                            katman += uret_armoni(notalar_sozlugu.get(kanallar["armoni"][i], 0.0))
-                        
-                        ana_ses = np.concatenate((ana_ses, katman))
-                
-                max_val = np.max(np.abs(ana_ses))
-                if max_val > 0:
-                    ana_ses = np.int16(ana_ses / max_val * 32767)
-                else:
-                    ana_ses = np.int16(ana_ses)
-                
-                byte_io = io.BytesIO()
-                wav.write(byte_io, sample_rate, ana_ses)
-                
-                st.audio(byte_io.getvalue(), format='audio/wav')
-                st.success(f"🎵 {tekrar_sayisi*16} Adımlık Şarkın Hazır! (Tempo: {sarki_verisi.get('tempo', 120)} BPM)")
-                
-                with st.expander("🛠️ Devasa Orkestra Kayıt Kodlarını İncele"):
+                with st.expander("🛠️ Eymen'in Dev Stüdyo Kayıtlarını İncele"):
                     st.json(sarki_verisi)
                     
             except json.JSONDecodeError:
-                st.error("Yapay zeka notaları yazarken harf hatası yaptı. Lütfen butona tekrar basarak yeniden oluşturmasını iste.")
+                st.error("Yapay zeka devasa enstrümanları dizkerken hata yaptı. Lütfen tekrar dene.")
             except Exception as e:
                 st.error(f"Sistem Hatası: {e}")
