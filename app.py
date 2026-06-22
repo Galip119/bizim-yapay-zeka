@@ -187,65 +187,24 @@ elif uygulama_modu == "Sesli Yanıt 🗣️":
         st.audio(st.session_state.son_ses_bytes, format='audio/mp3')
         st.download_button(label="💾 MP3 Olarak İndir", data=st.session_state.son_ses_bytes, file_name="eymen_ses.mp3", mime="audio/mp3", use_container_width=True)
 
-# ==========================================
-# 4. MOD: MÜZİSYEN MODU (SADECE MP3)
-# ==========================================
-elif uygulama_modu == "Müzisyen Modu 🎵":
-    st.markdown("### 🎵 NoModelsMusic Dev Stüdyo")
-    col_m1, col_m2 = st.columns([3, 1])
-    with col_m1:
-        muzik_sorgu = st.text_input("Şarkıyı tarif et:", placeholder="Örn: 80s synthwave, hareketli...")
-    with col_m2:
-        hedef_dk = st.number_input("Süre (Dk)", min_value=0.5, max_value=10.0, value=2.0, step=0.5)
-
-    if st.button("🎸 Müziği Üret (Sadece MP3)", use_container_width=True) and muzik_sorgu:
-        with st.spinner(f"{hedef_dk} dakikalık şarkı bestelenip MP3 formatına sıkıştırılıyor..."):
-            try:
-                sistem_mesaji = """Sen usta bir prodüktörsün. Kullanıcının hissine göre 16 adımlık DEV BİR MÜZİK İSKELETİ kur.
-                SADECE GEÇERLİ JSON YAZ.
-                Kullanabileceğin Kanallar:
-                - Davullar: "kick_808", "kick_909", "kick_aco", "kick_pnc", "kick_lof", "kick_tec", "kick_dep", "snare_aco", "snare_ele", "snare_808", "snare_trp", "clap_bsc", "clap_rvb", "rimshot", "hihat_cl", "hihat_op", "cym_cr", "cym_rd", "tom_hi", "tom_lo", "bongo", "cowbell", "shaker", "claves"
-                - Doğa/Oyun FX: "fx_wind", "fx_rain", "fx_ocean", "fx_thunder", "fx_fire", "fx_laser", "fx_explosion", "fx_jump", "fx_coin", "fx_helicopter", "fx_ufo", "fx_bird", "fx_dog", "fx_cricket", "fx_frog"
-                - Bas (C1-B3): "bass_sub", "bass_808", "bass_slap", "bass_syn", "bass_res", "bass_acd", "bass_fm", "bass_wob", "bass_mog", "bass_frt"
-                - Tuşlular (C3-B5): "piano_grd", "piano_rhd", "piano_dx7", "organ_ham", "organ_chu", "clavinet"
-                - Gitar/Yaylı (C3-B6): "guit_aco", "guit_nyl", "guit_ovd", "guit_fuz", "harp", "str_syn", "violin", "cello"
-                - Üflemeli (C4-B6): "flute", "trumpet", "brass", "sax", "pan_flu"
-                - Lead/Pad/Pluck (C3-B7): "lead_saw", "lead_sqr", "lead_hvr", "lead_spr", "pad_wrm", "pad_cho", "pluck_sin", "pluck_fm", "arp_8bt"
-                
-                (Not: Kanalların sonuna "_2" eklenebilir. Örn: "kick_808_2")
-                
-                Tüm array dizileri 16 elemanlı olmalı. Notalar C1-B7 arası.
-                """
-                
-                basarili = False
-                for model_id in [secilen_model_id] + [m for m in MODELS.values() if m != secilen_model_id]:
-                    try:
-                        response = client.chat.completions.create(
-                            messages=[{"role": "system", "content": sistem_mesaji}, {"role": "user", "content": muzik_sorgu}],
-                            model=model_id, temperature=0.7
-                        )
-                        basarili = True
-                        break
-                    except: continue
-
-                if basarili:
-                    json_str = response.choices[0].message.content.strip()
-                    m = re.search(r'\{.*\}', json_str, re.DOTALL)
-                    if m: json_str = m.group(0)
+import NoModelsMusic
+                    import subprocess
                     
-                    sarki_verisi = json.loads(json_str)
-                    
-                    import NoModelsMusic
                     ses_dosyasi_wav = NoModelsMusic.motoru_calistir(sarki_verisi, hedef_dakika=hedef_dk)
                     
-                    from pydub import AudioSegment
-                    
-                    wav_io = io.BytesIO(ses_dosyasi_wav)
-                    ses_segmenti = AudioSegment.from_wav(wav_io)
-                    
-                    mp3_io = io.BytesIO()
-                    ses_segmenti.export(mp3_io, format="mp3", bitrate="192k")
-                    ses_dosyasi_mp3 = mp3_io.getvalue()
+                    # --- 🚀 DOĞRUDAN FFMPEG İLE MP3'E ÇEVİRME İŞLEMİ (PYDUB YOK!) ---
+                    try:
+                        process = subprocess.run(
+                            ['ffmpeg', '-i', 'pipe:0', '-f', 'mp3', '-b:a', '192k', 'pipe:1'],
+                            input=ses_dosyasi_wav,
+                            capture_output=True,
+                            check=True
+                        )
+                        ses_dosyasi_mp3 = process.stdout
+                    except Exception as e:
+                        st.error("MP3 çevirme motoru çalışamadı, orijinal ses veriliyor.")
+                        ses_dosyasi_mp3 = ses_dosyasi_wav
+                    # ----------------------------------
                     
                     st.audio(ses_dosyasi_mp3, format='audio/mp3')
                     st.success("🎵 Şarkı Hazır!")
