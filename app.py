@@ -177,8 +177,8 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                             for sayfa in pdf.pages
                             if sayfa.extract_text()
                         ]
-                    )
-                    elif dosya_adi.endswith(".docx"):
+                  
+                        elif dosya_adi.endswith(".docx"):
                     doc = Document(yuklenen_dosya)
                     icerik = "\n".join(
                         [p.text for p in doc.paragraphs]
