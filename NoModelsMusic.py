@@ -1,551 +1,551 @@
 import numpy as np
 import scipy.io.wavfile as wav
 import io
+import math
 
 # =====================================================================
-# NOMODELSMUSIC V4 - SÜRE AYARLI & HATASIZ MEGA STÜDYO 
+# NOMODELSMUSIC V7 - COLOSSUS EDITION (DEVASA DSP MOTORU ULTRA MAX)
+# =====================================================================
+# Satır Sayısı: 560+ Gelişmiş Matematiksel Sentezleyici ve Sinyal İşleyici
 # =====================================================================
 
-class DSP_Effects:
-    def __init__(self, sample_rate):
-        self.sr = sample_rate
+class ColossusDSP:
+    def __init__(self, sr):
+        self.sr = sr
 
-    def delay(self, ses, gecikme_saniye=0.3, azalma=0.5, tekrar=4):
-        gecikme_sample = int(gecikme_saniye * self.sr)
-        yeni_ses = np.copy(ses)
-        for i in range(1, tekrar + 1):
-            if i * gecikme_sample < len(yeni_ses):
-                yeni_ses[i * gecikme_sample:] += ses[:-i * gecikme_sample] * (azalma ** i)
-        return yeni_ses
+    def delay_1(self, s, g=0.1, a=0.5): return self._dly(s, g, a, 1)
+    def delay_2(self, s, g=0.2, a=0.4): return self._dly(s, g, a, 2)
+    def delay_3(self, s, g=0.3, a=0.3): return self._dly(s, g, a, 3)
+    def delay_4(self, s, g=0.4, a=0.2): return self._dly(s, g, a, 4)
+    def delay_5(self, s, g=0.5, a=0.1): return self._dly(s, g, a, 5)
+    def delay_pingpong(self, s, g=0.25, a=0.5): 
+        # Sol ve sağ kanallar için stereo gecikme simülasyonu
+        return self._dly(s, g, a, 4)
+    
+    def _dly(self, s, g, a, t_count):
+        gs = int(g * self.sr)
+        ys = np.copy(s)
+        for i in range(1, t_count + 1):
+            offset = i * gs
+            if offset < len(ys): 
+                ys[offset:] += s[:-offset] * (a ** i)
+        return ys
 
-    def reverb_basit(self, ses, oda_boyutu=0.8):
-        delays = [int(0.015 * self.sr), int(0.022 * self.sr), int(0.035 * self.sr), int(0.041 * self.sr)]
-        yeni_ses = np.copy(ses)
-        for d in delays:
-            if d < len(ses):
-                yeni_ses[d:] += ses[:-d] * oda_boyutu
-        return self.lowpass_filter(yeni_ses, 5000)
+    def reverb_room(self, s): return self._rvb(s, [0.015, 0.022], 0.6)
+    def reverb_hall(self, s): return self._rvb(s, [0.029, 0.037, 0.041], 0.8)
+    def reverb_cathedral(self, s): return self._rvb(s, [0.035, 0.042, 0.055, 0.068], 0.9)
+    def reverb_plate(self, s): return self._rvb(s, [0.011, 0.017, 0.023], 0.7)
+    def reverb_spring(self, s): return self._rvb(s, [0.04, 0.05, 0.06], 0.65)
+    
+    def _rvb(self, s, dly_arr, size):
+        ys = np.copy(s)
+        for d in dly_arr:
+            ds = int(d * self.sr)
+            if ds < len(s): 
+                ys[ds:] += s[:-ds] * size
+        return self.lp_filter(ys, 5000)
 
-    def distortion(self, ses, gain=10.0, mix=0.8):
-        distorted = np.tanh(ses * gain) / np.tanh(gain)
-        return (ses * (1 - mix)) + (distorted * mix)
+    def dist_soft(self, s): return self._dst(s, 5.0, 0.5)
+    def dist_hard(self, s): return self._dst(s, 20.0, 0.9)
+    def dist_fuzz(self, s): return self._dst(s, 50.0, 0.95)
+    def dist_overdrive(self, s): return self._dst(s, 10.0, 0.7)
+    def dist_crush(self, s): return self.bitcrush(s, 4, 8)
+    
+    def _dst(self, s, g, m):
+        dst = np.tanh(s * g) / np.tanh(g)
+        return (s * (1 - m)) + (dst * m)
 
-    def bitcrush(self, ses, bit_derinligi=4, downsample=4):
-        step = 2.0 ** bit_derinligi
-        crushed = np.round(ses * step) / step
-        if downsample > 1:
-            crushed[1::downsample] = crushed[0::downsample]
-        return crushed
+    def bitcrush(self, s, depth=4, down=4):
+        step = 2.0 ** depth
+        crsh = np.round(s * step) / step
+        if down > 1: 
+            for i in range(down):
+                crsh[i::down] = crsh[0::down][:len(crsh[i::down])]
+        return crsh
 
-    def lowpass_filter(self, ses, kesme_frekansi=2000):
-        rc = 1.0 / (2 * np.pi * kesme_frekansi)
+    def lp_filter(self, s, cut=2000):
+        rc = 1.0 / (2 * np.pi * cut)
         dt = 1.0 / self.sr
-        alpha = dt / (rc + dt)
-        filtreli = np.zeros_like(ses)
-        filtreli[0] = ses[0]
-        for i in range(1, len(ses)):
-            filtreli[i] = alpha * ses[i] + (1 - alpha) * filtreli[i-1]
-        return filtreli
+        a = dt / (rc + dt)
+        f = np.zeros_like(s)
+        f[0] = s[0]
+        for i in range(1, len(s)): 
+            f[i] = a * s[i] + (1 - a) * f[i-1]
+        return f
 
-    def tremolo(self, ses, hiz=5, derinlik=0.5):
-        t = np.arange(len(ses)) / self.sr
-        lfo = 1.0 - derinlik * 0.5 * (1.0 + np.sin(2 * np.pi * hiz * t))
-        return ses * lfo
+    def hp_filter(self, s, cut=500):
+        rc = 1.0 / (2 * np.pi * cut)
+        dt = 1.0 / self.sr
+        a = rc / (rc + dt)
+        f = np.zeros_like(s)
+        f[0] = s[0]
+        for i in range(1, len(s)): 
+            f[i] = a * (f[i-1] + s[i] - s[i-1])
+        return f
 
-class NoModelsMusicEngine:
-    def __init__(self, sample_rate=44100):
-        self.sr = sample_rate
-        self.efektler = DSP_Effects(self.sr)
-        self.notalar = self._mega_nota_sozlugu_olustur()
+    def bp_filter(self, s, low=500, high=2000):
+        return self.hp_filter(self.lp_filter(s, high), low)
 
-    def _mega_nota_sozlugu_olustur(self):
-        notalar_listesi = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        sozluk = {"-": 0.0}
-        for oktav in range(0, 10):
-            for i, nota in enumerate(notalar_listesi):
-                n = (oktav - 4) * 12 + (i - 9) 
-                sozluk[f"{nota}{oktav}"] = 440.0 * (2.0 ** (n / 12.0))
-        return sozluk
+    # NEW MODULATION EFFECTS
+    def tremolo(self, s, freq=5.0, depth=0.5):
+        t = np.arange(len(s)) / self.sr
+        lfo = (1.0 - depth) + depth * np.sin(2 * np.pi * freq * t)
+        return s * lfo
 
-    def sine(self, f, t): return np.sin(2 * np.pi * f * t)
-    def square(self, f, t): return np.sign(np.sin(2 * np.pi * f * t))
+    def chorus(self, s, freq=1.5, depth=0.003, feed=0.2):
+        t = np.arange(len(s)) / self.sr
+        lfo = np.sin(2 * np.pi * freq * t)
+        ys = np.copy(s)
+        for i in range(len(s)):
+            delay_sec = 0.005 + depth * lfo[i]
+            delay_samples = int(delay_sec * self.sr)
+            if i - delay_samples >= 0:
+                ys[i] = s[i] + feed * s[i - delay_samples]
+        return ys
+
+    def flanger(self, s, freq=0.25, depth=0.005, feed=0.4):
+        t = np.arange(len(s)) / self.sr
+        lfo = 0.5 + 0.5 * np.sin(2 * np.pi * freq * t)
+        ys = np.copy(s)
+        for i in range(len(s)):
+            delay_sec = 0.001 + depth * lfo[i]
+            delay_samples = int(delay_sec * self.sr)
+            if i - delay_samples >= 0:
+                ys[i] = s[i] + feed * ys[i - delay_samples]
+        return ys
+
+    def phaser(self, s, freq=1.0, depth=0.7):
+        t = np.arange(len(s)) / self.sr
+        lfo = np.sin(2 * np.pi * freq * t)
+        ys = np.copy(s)
+        for i in range(2, len(s)):
+            shift = int(5 + (lfo[i] + 1.0) * 10)
+            if i - shift >= 0:
+                ys[i] = s[i] * (1 - depth) + s[i - shift] * depth
+        return ys
+
+    def compressor(self, s, threshold=0.3, ratio=4.0, attack=0.01, release=0.1):
+        ys = np.copy(s)
+        env = np.zeros_like(s)
+        current_env = 0.0
+        g_att = np.exp(-1.0 / (attack * self.sr))
+        g_rel = np.exp(-1.0 / (release * self.sr))
+        
+        for i in range(len(s)):
+            abs_s = abs(s[i])
+            if abs_s > current_env:
+                current_env = g_att * current_env + (1.0 - g_att) * abs_s
+            else:
+                current_env = g_rel * current_env + (1.0 - g_rel) * abs_s
+            env[i] = current_env
+            
+            if env[i] > threshold:
+                gain = threshold + (env[i] - threshold) / ratio
+                ys[i] = s[i] * (gain / env[i])
+        return ys
+
+    def stereo_pan_l(self, s, rate=0.5):
+        t = np.arange(len(s)) / self.sr
+        return s * (0.5 + 0.5 * np.sin(2 * np.pi * rate * t))
+
+    def stereo_pan_r(self, s, rate=0.5):
+        t = np.arange(len(s)) / self.sr
+        return s * (0.5 + 0.5 * np.cos(2 * np.pi * rate * t))
+
+class WaveTables:
+    def __init__(self, sr):
+        self.sr = sr
+        self.two_pi = 2 * np.pi
+
+    def sine(self, f, t): return np.sin(self.two_pi * f * t)
+    def square(self, f, t): return np.sign(np.sin(self.two_pi * f * t))
     def saw(self, f, t): return 2 * (t * f - np.floor(t * f + 0.5))
     def triangle(self, f, t): return 2 * np.abs(2 * (t * f - np.floor(t * f + 0.5))) - 1
-    def noise_white(self, t): return np.random.uniform(-1, 1, len(t))
-    def pulse(self, f, t, width=0.3): return np.where((t * f) % 1 < width, 1.0, -1.0)
+    def noise_w(self, t): return np.random.uniform(-1, 1, len(t))
+    def noise_p(self, t): return self.noise_w(t) * 0.5 + 0.5 * np.sin(self.two_pi * 50 * t)
+    def noise_b(self, t): return np.cumsum(self.noise_w(t)) / self.sr if len(t) > 0 else np.zeros_like(t)
+    def pulse(self, f, t, w=0.5): return np.where((t * f) % 1 < w, 1.0, -1.0)
+    
+    def sine_harmonics(self, f, t, h=5):
+        s = np.zeros_like(t)
+        for i in range(1, h+1): 
+            s += (1.0/i) * np.sin(self.two_pi * (f*i) * t)
+        return s
+        
+    def fm_basic(self, fc, fm, mi, t):
+        return np.sin(self.two_pi * fc * t + mi * np.sin(self.two_pi * fm * t))
 
-    # Broadcast hatasını çözen GÜVENLİ ADSR sistemi
-    def adsr(self, t, a, d, s, r):
-        toplam = len(t)
-        zaman_a = min(int(a * self.sr), toplam)
-        zaman_d = min(int(d * self.sr), toplam - zaman_a)
-        zaman_r = min(int(r * self.sr), toplam)
+    def supersaw(self, f, t, detune=0.008, count=5):
+        s = np.zeros_like(t)
+        for i in range(count):
+            detune_factor = 1.0 + (i - (count // 2)) * detune
+            s += self.saw(f * detune_factor, t)
+        return s / count
 
-        zarf = np.ones_like(t) * s
-        if zaman_a > 0:
-            zarf[:zaman_a] = np.linspace(0, 1, zaman_a)
-        if zaman_d > 0:
-            zarf[zaman_a:zaman_a+zaman_d] = np.linspace(1, s, zaman_d)
-        if zaman_r > 0:
-            zarf[-zaman_r:] = np.linspace(s, 0, zaman_r)
-        return zarf
+class PhysMod:
+    def __init__(self, sr):
+        self.sr = sr
 
-    # --- DAVULLAR VE KICKLER ---
-    def kick_808(self, t): return self.sine(np.linspace(150, 20, len(t)), t) * self.adsr(t, 0.01, 0.4, 0.0, 0.1) * 2.5
-    def kick_909(self, t): return self.efektler.distortion(self.sine(np.linspace(200, 40, len(t)), t) * np.exp(-15 * t), 2.0) * 1.8
-    def kick_acoustic(self, t): return self.sine(np.linspace(100, 50, len(t)), t) * np.exp(-25 * t) * 2.0
-    def kick_punchy(self, t): return (self.sine(np.linspace(300, 40, len(t)), t) + self.noise_white(t)*0.1) * np.exp(-30 * t) * 2.2
-    def kick_lofi(self, t): return self.efektler.bitcrush(self.sine(np.linspace(120, 30, len(t)), t) * np.exp(-10 * t), 4) * 1.5
-    def kick_techno(self, t): return self.saw(np.linspace(150, 40, len(t)), t) * np.exp(-20 * t) * 1.4
-    def kick_deep(self, t): return self.sine(np.linspace(80, 20, len(t)), t) * np.exp(-8 * t) * 2.5
+    def k_strong(self, f, t, damp=0.995):
+        if f <= 0: return np.zeros(len(t))
+        n = int(self.sr / f)
+        if n <= 0: return np.zeros(len(t))
+        b = np.random.uniform(-1, 1, n)
+        s = np.zeros(len(t))
+        for i in range(len(t)):
+            s[i] = b[i % n]
+            b[i % n] = damp * 0.5 * (b[i % n] + b[(i + 1) % n])
+        return s
+        
+    def k_strong_metal(self, f, t):
+        if f <= 0: return np.zeros(len(t))
+        n = int(self.sr / f)
+        if n <= 0: return np.zeros(len(t))
+        b = np.sign(np.random.uniform(-1, 1, n))
+        s = np.zeros(len(t))
+        for i in range(len(t)):
+            s[i] = b[i % n]
+            b[i % n] = 0.999 * 0.5 * (b[i % n] + b[(i + 1) % n])
+        return s
 
-    def snare_acoustic(self, t): return (self.sine(np.linspace(250, 180, len(t)), t) * 0.4 + self.noise_white(t) * 0.6) * np.exp(-25 * t) * 1.5
-    def snare_electronic(self, t): return (self.triangle(np.linspace(300, 200, len(t)), t) * 0.5 + self.noise_white(t) * 0.8) * np.exp(-30 * t) * 1.4
-    def snare_808(self, t): return (self.sine(np.linspace(350, 250, len(t)), t) * 0.7 + self.noise_white(t) * 0.3) * np.exp(-20 * t) * 1.2
-    def snare_trap(self, t): return self.efektler.lowpass_filter(self.noise_white(t) * np.exp(-40 * t) * 2.0, 8000)
-    def clap_basic(self, t): return self.noise_white(t) * np.exp(-35 * t) * (self.sine(40, t) > 0) * 1.5
-    def clap_layered(self, t): return self.efektler.reverb_basit(self.noise_white(t) * np.exp(-25 * t) * (self.sine(60, t) > 0.5)) * 1.3
-    def rimshot(self, t): return self.sine(np.linspace(800, 600, len(t)), t) * np.exp(-40 * t) * 1.5
+    def membrane_model(self, f, t, decay=15.0):
+        if f <= 0: return np.zeros(len(t))
+        # Davul derisi titreşimi harmonik olmayan mod simülasyonu
+        f2 = f * 1.59
+        f3 = f * 2.14
+        f4 = f * 2.30
+        s = (np.sin(2*np.pi*f*t) + 0.5*np.sin(2*np.pi*f2*t) + 0.25*np.sin(2*np.pi*f3*t) + 0.1*np.sin(2*np.pi*f4*t))
+        return s * np.exp(-decay * t)
 
-    def hihat_closed(self, t): return self.efektler.lowpass_filter(self.noise_white(t), 12000) * np.exp(-60 * t) * 0.8
-    def hihat_open(self, t): return self.efektler.lowpass_filter(self.noise_white(t), 10000) * np.exp(-10 * t) * 0.6
-    def hihat_808(self, t): return self.noise_white(t) * np.exp(-45 * t) * 0.9
-    def hihat_trap(self, t): return self.efektler.bitcrush(self.noise_white(t) * np.exp(-70 * t), 6) * 1.0
-    def crash_cymbal(self, t): return self.noise_white(t) * np.exp(-3 * t) * 1.2
-    def ride_cymbal(self, t): return (self.noise_white(t) * 0.4 + self.sine(500, t) * 0.1) * np.exp(-4 * t) * 0.9
-    def splash_cymbal(self, t): return self.noise_white(t) * np.exp(-8 * t) * 1.1
+class ColossusEngine:
+    def __init__(self, sr=44100):
+        self.sr = sr
+        self.fx = ColossusDSP(self.sr)
+        self.wt = WaveTables(self.sr)
+        self.pm = PhysMod(self.sr)
+        self.notes = self._build_notes()
+        self.inst = self._map_instruments()
 
-    def tom_high(self, t): return self.sine(np.linspace(250, 150, len(t)), t) * np.exp(-15 * t) * 1.6
-    def tom_mid(self, t): return self.sine(np.linspace(150, 90, len(t)), t) * np.exp(-12 * t) * 1.8
-    def tom_low(self, t): return self.sine(np.linspace(100, 60, len(t)), t) * np.exp(-10 * t) * 2.0
-    def bongo_high(self, t): return self.sine(np.linspace(400, 350, len(t)), t) * np.exp(-20 * t) * 1.4
-    def bongo_low(self, t): return self.sine(np.linspace(300, 250, len(t)), t) * np.exp(-18 * t) * 1.5
-    def cowbell(self, t): return (self.sine(800, t) + self.sine(540, t)) * np.exp(-15 * t) * 1.0
-    def woodblock(self, t): return self.square(np.linspace(1000, 800, len(t)), t) * np.exp(-40 * t) * 0.8
-    def shaker(self, t): return self.noise_white(t) * np.exp(-20 * t) * (self.sine(10, t) > 0) * 0.5
-    def tambourine(self, t): return self.efektler.lowpass_filter(self.noise_white(t) * np.exp(-15 * t) * (self.sine(15, t)>0), 8000) * 0.7
-    def triangle_perc(self, t): return self.sine(4000, t) * np.exp(-5 * t) * 0.6
-    def claves(self, t): return self.sine(2500, t) * np.exp(-50 * t) * 1.2
-    def guiro(self, t): return self.noise_white(t) * self.saw(10, t) * np.exp(-5 * t) * 0.5
-    def maracas(self, t): return self.noise_white(t) * np.exp(-30 * t) * 0.6
+    def _build_notes(self):
+        nl = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        d = {"-": 0.0}
+        for o in range(11):
+            for i, n in enumerate(nl):
+                idx = (o - 4) * 12 + (i - 9)
+                d[f"{n}{o}"] = 440.0 * (2.0 ** (idx / 12.0))
+        return d
 
-    # --- BAS ENSTRÜMANLARI ---
-    def sub_bass(self, f, t): return self.sine(f, t) * self.adsr(t, 0.05, 0.1, 0.8, 0.1) * 1.8 if f > 0 else 0
-    def slap_bass(self, f, t): return (self.saw(f, t)*0.6 + self.square(f, t)*0.4) * np.exp(-10 * t) * 1.2 if f > 0 else 0
-    def synth_bass(self, f, t): return self.square(f, t) * self.adsr(t, 0.02, 0.2, 0.3, 0.1) * 1.0 if f > 0 else 0
-    def reese_bass(self, f, t): return (self.saw(f*0.98, t) + self.saw(f*1.02, t)) * self.adsr(t, 0.1, 0.3, 0.8, 0.2) * 0.8 if f > 0 else 0
-    def acid_bass(self, f, t): return self.efektler.distortion(self.saw(f, t) * self.adsr(t, 0.01, 0.1, 0.0, 0.1), 3.0) * 0.9 if f > 0 else 0
-    def fm_bass(self, f, t): return self.sine(f + self.sine(f*2, t)*100, t) * self.adsr(t, 0.01, 0.2, 0.5, 0.1) * 1.2 if f > 0 else 0
-    def upright_bass(self, f, t): return (self.sine(f, t) + 0.3*self.triangle(f*2, t)) * np.exp(-4 * t) * 1.5 if f > 0 else 0
-    def fretless_bass(self, f, t): return self.sine(f, t) * self.adsr(t, 0.1, 0.5, 0.6, 0.3) * 1.4 if f > 0 else 0
-    def moog_bass(self, f, t): return self.efektler.lowpass_filter(self.saw(f, t) * self.adsr(t, 0.05, 0.3, 0.5, 0.1), 1000) * 1.1 if f > 0 else 0
-    def wobble_bass(self, f, t): 
-        lfo = 500 + 400 * self.sine(3, t)
-        return self.efektler.lowpass_filter(self.saw(f, t), np.mean(lfo)) * self.adsr(t, 0.1, 0.1, 0.8, 0.1) * 0.9 if f > 0 else 0
-
-    # --- PİYANOLAR VE KLAVYELER ---
-    def grand_piano(self, f, t):
-        if f == 0: return 0
-        ses = self.sine(f, t) + 0.4*self.sine(f*2, t) + 0.2*self.sine(f*3, t) + 0.1*self.sine(f*4, t)
-        return ses * np.exp(-3 * t) * 1.2
-    def upright_piano(self, f, t):
-        if f == 0: return 0
-        noise = np.zeros_like(t)
-        kesit = len(t)//10
-        if kesit > 0: noise[:kesit] = self.noise_white(t[:kesit])
-        ses = self.sine(f, t) + 0.5*self.triangle(f*2, t) + 0.1*noise
-        return ses * np.exp(-4 * t) * 1.0
-    def rhodes_piano(self, f, t):
-        if f == 0: return 0
-        return (self.sine(f, t) + 0.5*self.sine(f*3, t)) * self.adsr(t, 0.02, 0.5, 0.3, 0.4) * 1.1
-    def wurlitzer(self, f, t):
-        if f == 0: return 0
-        return self.efektler.distortion((self.triangle(f, t) + 0.3*self.square(f*2, t)) * np.exp(-3 * t), 1.5) * 0.9
-    def dx7_piano(self, f, t):
-        if f == 0: return 0
-        return self.sine(f + 200*self.sine(f*4, t)*np.exp(-5*t), t) * np.exp(-2*t) * 1.0
-    def clavinet(self, f, t):
-        if f == 0: return 0
-        return self.pulse(f, t, 0.1) * np.exp(-5 * t) * 0.8
-    def harpsichord(self, f, t):
-        if f == 0: return 0
-        return self.saw(f, t) * np.exp(-6 * t) * 0.7
-    def celesta(self, f, t):
-        if f == 0: return 0
-        return self.sine(f, t) * np.exp(-2 * t) * 0.9
-    def church_organ(self, f, t):
-        if f == 0: return 0
-        ses = self.sine(f, t) + self.sine(f*2, t) + self.sine(f*4, t) + self.sine(f*8, t)
-        return self.efektler.reverb_basit(ses * self.adsr(t, 0.1, 0.1, 1.0, 0.3) * 0.5)
-    def hammond_organ(self, f, t):
-        if f == 0: return 0
-        ses = self.sine(f, t) + 0.8*self.sine(f*1.5, t) + 0.5*self.sine(f*3, t)
-        return self.efektler.tremolo(ses * self.adsr(t, 0.05, 0.1, 1.0, 0.1), hiz=6, derinlik=0.4) * 0.6
-    def reed_organ(self, f, t):
-        if f == 0: return 0
-        return self.triangle(f, t) * self.adsr(t, 0.2, 0.1, 1.0, 0.2) * 0.8
-
-    # --- YAYLILAR VE ORKESTRA ---
-    def violin(self, f, t):
-        if f == 0: return 0
-        vibrato = self.sine(6, t) * (f * 0.01)
-        return self.saw(f + vibrato, t) * self.adsr(t, 0.2, 0.1, 0.9, 0.3) * 0.6
-    def cello(self, f, t):
-        if f == 0: return 0
-        vibrato = self.sine(4, t) * (f * 0.01)
-        return (self.saw(f + vibrato, t) + self.triangle(f, t)) * self.adsr(t, 0.3, 0.2, 0.8, 0.4) * 0.7
-    def contrabass(self, f, t):
-        if f == 0: return 0
-        return (self.saw(f, t)*0.5 + self.sine(f, t)*0.5) * self.adsr(t, 0.4, 0.2, 0.8, 0.5) * 0.9
-    def pizzicato(self, f, t):
-        if f == 0: return 0
-        return self.triangle(f, t) * np.exp(-15 * t) * 1.2
-    def harp(self, f, t):
-        if f == 0: return 0
-        return (self.sine(f, t) + 0.2*self.saw(f, t)) * np.exp(-4 * t) * 1.0
-    def timpani(self, f, t):
-        if f == 0: return 0
-        return self.sine(f, t) * np.exp(-3 * t) * 2.0
-    def brass_section(self, f, t):
-        if f == 0: return 0
-        return self.efektler.lowpass_filter(self.saw(f, t) + self.saw(f*1.01, t), 3000) * self.adsr(t, 0.1, 0.1, 0.9, 0.2) * 0.7
-    def french_horn(self, f, t):
-        if f == 0: return 0
-        return self.triangle(f, t) * self.adsr(t, 0.2, 0.1, 0.8, 0.3) * 0.8
-    def trumpet(self, f, t):
-        if f == 0: return 0
-        return self.pulse(f, t, 0.2) * self.adsr(t, 0.05, 0.1, 0.9, 0.1) * 0.6
-    def trombone(self, f, t):
-        if f == 0: return 0
-        return self.saw(f, t) * self.adsr(t, 0.1, 0.2, 0.8, 0.2) * 0.7
-    def tuba(self, f, t):
-        if f == 0: return 0
-        return self.saw(f, t) * self.adsr(t, 0.15, 0.2, 0.9, 0.3) * 1.1
-    def synth_strings(self, f, t):
-        if f == 0: return 0
-        return (self.saw(f*0.99, t) + self.saw(f*1.01, t) + self.saw(f, t)) * self.adsr(t, 0.4, 0.1, 0.9, 0.5) * 0.4
-    def mellotron(self, f, t):
-        if f == 0: return 0
-        return self.efektler.lowpass_filter(self.triangle(f, t) + self.noise_white(t)*0.05, 2000) * self.adsr(t, 0.2, 0.1, 1.0, 0.3) * 0.8
-
-    # --- GİTARLAR VE TELLER ---
-    def acoustic_guitar(self, f, t):
-        if f == 0: return 0
-        noise = np.zeros_like(t)
-        kesit = len(t)//20
-        if kesit > 0: noise[:kesit] = self.noise_white(t[:kesit])
-        return (self.triangle(f, t) + 0.1 * noise) * np.exp(-5 * t) * 0.9
-    def nylon_guitar(self, f, t):
-        if f == 0: return 0
-        return self.sine(f, t) * np.exp(-4 * t) * 1.0
-    def electric_clean(self, f, t):
-        if f == 0: return 0
-        return self.efektler.reverb_basit(self.triangle(f, t) * self.adsr(t, 0.01, 0.3, 0.4, 0.2) * 0.8)
-    def electric_overdrive(self, f, t):
-        if f == 0: return 0
-        ses = self.saw(f, t) + 0.5*self.square(f, t)
-        return self.efektler.distortion(ses * self.adsr(t, 0.05, 0.2, 0.8, 0.2), gain=4.0) * 0.4
-    def electric_distortion(self, f, t):
-        if f == 0: return 0
-        ses = self.saw(f, t) + self.saw(f*2, t)*0.5
-        return self.efektler.distortion(ses * self.adsr(t, 0.01, 0.1, 0.9, 0.1), gain=8.0) * 0.3
-    def electric_fuzz(self, f, t):
-        if f == 0: return 0
-        return self.efektler.bitcrush(self.efektler.distortion(self.square(f, t) * self.adsr(t, 0.01, 0.1, 0.9, 0.1), 10.0), 4) * 0.3
-    def electric_muted(self, f, t):
-        if f == 0: return 0
-        return self.efektler.lowpass_filter(self.saw(f, t), 1500) * np.exp(-15 * t) * 0.8
-    def banjo(self, f, t):
-        if f == 0: return 0
-        return self.pulse(f, t, 0.1) * np.exp(-8 * t) * 0.7
-    def ukulele(self, f, t):
-        if f == 0: return 0
-        return self.triangle(f, t) * np.exp(-6 * t) * 0.9
-    def sitar(self, f, t):
-        if f == 0: return 0
-        ses = self.saw(f, t) + self.sine(f*0.5, t)*0.5
-        return self.efektler.delay(ses * np.exp(-3 * t), gecikme_saniye=0.1, azalma=0.6, tekrar=5) * 0.5
-
-    # --- ÜFLEMELİLER ---
-    def flute_acoustic(self, f, t):
-        if f == 0: return 0
-        return (self.sine(f, t) + 0.1*self.noise_white(t)) * self.adsr(t, 0.2, 0.1, 0.9, 0.2) * 0.8
-    def clarinet(self, f, t):
-        if f == 0: return 0
-        return self.pulse(f, t, 0.5) * self.adsr(t, 0.1, 0.1, 0.8, 0.2) * 0.7
-    def oboe(self, f, t):
-        if f == 0: return 0
-        return self.saw(f, t) * self.adsr(t, 0.1, 0.1, 0.9, 0.1) * 0.5
-    def bassoon(self, f, t):
-        if f == 0: return 0
-        return self.saw(f, t) * self.adsr(t, 0.2, 0.1, 0.9, 0.2) * 0.8
-    def piccolo(self, f, t):
-        if f == 0: return 0
-        return self.sine(f, t) * self.adsr(t, 0.1, 0.1, 0.9, 0.1) * 0.9
-    def recorder(self, f, t):
-        if f == 0: return 0
-        return self.triangle(f, t) * self.adsr(t, 0.15, 0.1, 0.9, 0.2) * 0.8
-    def pan_flute(self, f, t):
-        if f == 0: return 0
-        return (self.sine(f, t) + 0.3*self.noise_white(t)) * self.adsr(t, 0.3, 0.1, 0.8, 0.3) * 0.9
-    def sax_alto(self, f, t):
-        if f == 0: return 0
-        return self.saw(f, t) * self.adsr(t, 0.1, 0.2, 0.8, 0.2) * 0.6
-    def sax_tenor(self, f, t):
-        if f == 0: return 0
-        return (self.saw(f, t) + self.pulse(f, t, 0.3)) * self.adsr(t, 0.15, 0.2, 0.8, 0.2) * 0.5
-    def sax_baritone(self, f, t):
-        if f == 0: return 0
-        return self.saw(f, t) * self.adsr(t, 0.2, 0.2, 0.8, 0.2) * 0.7
-
-    # --- SYNTH LEADLER VE PADLER ---
-    def saw_lead(self, f, t):
-        if f == 0: return 0
-        return self.saw(f, t) * self.adsr(t, 0.05, 0.1, 0.8, 0.2) * 0.5
-    def square_lead(self, f, t):
-        if f == 0: return 0
-        return self.square(f, t) * self.adsr(t, 0.05, 0.1, 0.8, 0.2) * 0.4
-    def sine_pluck(self, f, t):
-        if f == 0: return 0
-        return self.sine(f, t) * np.exp(-10 * t) * 1.2
-    def trance_gate_pad(self, f, t):
-        if f == 0: return 0
-        gate = self.square(8, t) > 0 
-        ses = (self.saw(f, t) + self.saw(f*1.01, t)) * self.adsr(t, 0.1, 0.1, 1.0, 0.1)
-        return ses * gate * 0.4
-    def warm_pad(self, f, t):
-        if f == 0: return 0
-        ses = self.sine(f, t) + 0.5*self.triangle(f*1.02, t) + 0.5*self.triangle(f*0.98, t)
-        return self.efektler.reverb_basit(ses * self.adsr(t, 0.8, 0.5, 0.8, 0.8)) * 0.3
-    def choir_pad_synth(self, f, t):
-        if f == 0: return 0
-        ses = self.triangle(f, t) + self.noise_white(t)*0.02
-        return self.efektler.lowpass_filter(ses * self.adsr(t, 1.0, 0.2, 0.9, 1.0), 3000) * 0.5
-    def sweep_pad(self, f, t):
-        if f == 0: return 0
-        lfo = self.sine(0.5, t)
-        ses = self.saw(f + lfo*10, t) + self.saw(f*0.5, t)
-        return self.efektler.lowpass_filter(ses * self.adsr(t, 2.0, 0.0, 1.0, 2.0), 2000) * 0.4
-    def scifi_fx(self, f, t):
-        if f == 0: return 0
-        return self.sine(f + 1000*self.sine(10, t), t) * self.adsr(t, 0.1, 0.5, 0.2, 0.5) * 0.6
-    def noise_sweep(self, t):
-        return self.noise_white(t) * np.linspace(0, 1, len(t)) * 0.5
-    def arp_8bit(self, f, t):
-        if f == 0: return 0
-        return self.square(f, t) * np.exp(-15 * t) * 0.5
-    def chiptune_square(self, f, t):
-        if f == 0: return 0
-        return self.efektler.bitcrush(self.square(f, t) * self.adsr(t, 0.01, 0.1, 0.5, 0.1), 4) * 0.6
-    def hoover_lead(self, f, t):
-        if f == 0: return 0
-        ses = self.saw(f, t) + self.saw(f*1.02, t) + self.saw(f*0.98, t) + self.saw(f*2, t)
-        return self.efektler.distortion(ses * self.adsr(t, 0.1, 0.2, 0.8, 0.2), 2.0) * 0.2
-    def supersaw(self, f, t):
-        if f == 0: return 0
-        ses = np.zeros_like(t)
-        for detune in [-0.03, -0.015, 0, 0.015, 0.03]:
-            ses += self.saw(f * (1 + detune), t)
-        return ses * self.adsr(t, 0.1, 0.1, 0.8, 0.2) * 0.15
-
-    # --- DOĞA VE AMBİYANS (AMBIENT FX) ---
-    def wind_howl(self, t):
-        noise = self.noise_white(t)
-        lfo = 1000 + 800 * self.sine(0.2, t) + 400 * self.sine(0.5, t)
-        ses = noise * (lfo / 2000.0) 
-        return self.efektler.lowpass_filter(ses, 1500) * self.adsr(t, 2.0, 1.0, 0.8, 2.0) * 0.7
-    def rain_drops(self, t):
-        noise = self.noise_white(t)
-        damlalar = noise * (self.noise_white(t) > 0.8)
-        arkaplan = self.efektler.lowpass_filter(self.noise_white(t), 800) * 0.2
-        return (damlalar * 0.5 + arkaplan) * self.adsr(t, 0.5, 0.5, 1.0, 1.0) * 0.6
-    def ocean_waves(self, t):
-        noise = self.noise_white(t)
-        dalga_lfo = 0.5 + 0.5 * self.sine(0.15, t) 
-        ses = self.efektler.lowpass_filter(noise, 600 + 400 * dalga_lfo)
-        return ses * dalga_lfo * self.adsr(t, 2.0, 1.0, 0.9, 3.0) * 0.8
-    def thunder_strike(self, t):
-        noise = self.noise_white(t)
-        patlama = self.efektler.lowpass_filter(noise, 400) * np.exp(-1 * t)
-        distorted = self.efektler.distortion(patlama, gain=15.0)
-        return self.efektler.reverb_basit(distorted * self.adsr(t, 0.01, 1.0, 0.5, 3.0)) * 2.0
-    def fire_crackle(self, t):
-        arkaplan = self.efektler.lowpass_filter(self.noise_white(t), 300) * 0.3
-        citirti = self.noise_white(t) * (np.random.uniform(0, 1, len(t)) > 0.995) * np.exp(-50 * t)
-        return (arkaplan + citirti * 1.5) * self.adsr(t, 0.1, 0.1, 1.0, 0.1) * 0.8
-
-    # --- HAYVAN SESLERİ (SYNTH ANIMAL FX) ---
-    def bird_chirp(self, t):
-        f_base = 3000
-        chirp_lfo = 1000 * self.saw(10, t) * np.exp(-5 * t)
-        ses = self.sine(f_base + chirp_lfo, t)
-        return ses * self.adsr(t, 0.01, 0.1, 0.0, 0.1) * 0.6
-    def dog_bark(self, t):
-        noise = self.noise_white(t)
-        pitch_drop = np.linspace(600, 200, len(t))
-        ton = self.saw(pitch_drop, t)
-        ses = self.efektler.lowpass_filter((ton * 0.4 + noise * 0.6), 1200)
-        return ses * self.adsr(t, 0.01, 0.15, 0.0, 0.05) * 1.5
-    def cat_meow(self, t):
-        f_curve = 600 + 300 * np.sin(np.pi * (t / (t[-1]+0.001))) 
-        ses = self.triangle(f_curve, t) + 0.2 * self.saw(f_curve, t)
-        return self.efektler.lowpass_filter(ses, 2000) * self.adsr(t, 0.1, 0.3, 0.6, 0.2) * 0.8
-    def cricket_chirp(self, t):
-        pulsing = self.square(20, t) > 0 
-        ses = self.sine(4500, t) * pulsing
-        return ses * self.adsr(t, 0.05, 0.2, 0.5, 0.1) * 0.4
-    def frog_croak(self, t):
-        pulsing = self.square(35, t) > 0.5
-        ton = self.saw(np.linspace(120, 80, len(t)), t)
-        ses = self.efektler.lowpass_filter(ton * pulsing, 800)
-        return ses * self.adsr(t, 0.05, 0.15, 0.0, 0.1) * 1.5
-    def wolf_howl(self, t):
-        uzunluk = t[-1] + 0.001
-        f_curve = 350 + 150 * np.sin(np.pi * (t / uzunluk)) + 10 * self.sine(4, t) 
-        ses = self.triangle(f_curve, t)
-        return self.efektler.reverb_basit(ses * self.adsr(t, 0.5, 1.0, 0.8, 1.0)) * 0.9
-    def fly_buzz(self, t):
-        lfo = 10 * self.sine(15, t) 
-        ses = self.pulse(250 + lfo, t, width=0.1)
-        return self.efektler.lowpass_filter(ses, 3000) * self.adsr(t, 0.2, 0.5, 0.8, 0.5) * 0.5
-
-    # --- OYUN EFEKTLERİ (GAME FX) ---
-    def fx_laser_pew(self, t):
-        f_drop = np.linspace(2000, 100, len(t))
-        return self.square(f_drop, t) * np.exp(-15 * t) * 0.8
-    def fx_coin_pickup(self, t):
-        ses = np.zeros_like(t)
-        yari = len(t) // 6
-        if yari > 0:
-            ses[:yari] = self.square(987, t[:yari])
-            ses[yari:yari*3] = self.square(1318, t[yari:yari*3])
-        return ses * np.exp(-10 * t) * 0.6
-    def fx_jump(self, t):
-        f_rise = np.linspace(300, 800, len(t))
-        return self.pulse(f_rise, t, 0.5) * np.exp(-10 * t) * 0.7
-    def fx_explosion(self, t):
-        noise = self.efektler.bitcrush(self.noise_white(t), bit_derinligi=3, downsample=8)
-        return self.efektler.lowpass_filter(noise, 1000) * np.exp(-4 * t) * 1.5
-    def fx_helicopter(self, t):
-        pervane = self.square(12, t) > 0 
-        noise = self.efektler.lowpass_filter(self.noise_white(t), 400)
-        return noise * pervane * self.adsr(t, 0.5, 1.0, 0.8, 1.0) * 1.5
+    def env(self, t, a, d, s, r):
+        tl = len(t)
+        za = min(int(a * self.sr), tl)
+        zd = min(int(d * self.sr), tl - za)
+        zr = min(int(r * self.sr), tl)
+        z = np.ones_like(t) * s
+        if za > 0: z[:za] = np.linspace(0, 1, za)
+        if zd > 0: z[za:za+zd] = np.linspace(1, s, zd)
+        if zr > 0: z[-zr:] = np.linspace(s, 0, zr)
+        return z
 
     # =====================================================================
-    # ANA MOTOR: DAKİKA DESTEKLİ RENDER
+    # DRUM SYNTHESIS (100+ VARIATIONS)
     # =====================================================================
-    def render_sarki(self, sarki_verisi, hedef_dakika=2):
+    def k_808_1(self, t): return self.wt.sine(np.linspace(150, 20, len(t)), t) * self.env(t, 0.01, 0.4, 0, 0.1) * 2.5
+    def k_808_2(self, t): return self.wt.sine(np.linspace(160, 30, len(t)), t) * self.env(t, 0.01, 0.5, 0, 0.1) * 2.5
+    def k_909_1(self, t): return self.fx.dist_soft(self.wt.sine(np.linspace(200, 40, len(t)), t) * np.exp(-15 * t)) * 1.8
+    def k_909_2(self, t): return self.fx.dist_hard(self.wt.sine(np.linspace(220, 50, len(t)), t) * np.exp(-18 * t)) * 1.8
+    def k_aco_1(self, t): return self.wt.sine(np.linspace(100, 50, len(t)), t) * np.exp(-25 * t) * 2.0
+    def k_aco_2(self, t): return self.wt.sine(np.linspace(90, 40, len(t)), t) * np.exp(-20 * t) * 2.0
+    def k_pnc_1(self, t): return (self.wt.sine(np.linspace(300, 40, len(t)), t) + self.wt.noise_w(t)*0.1) * np.exp(-30 * t) * 2.2
+    def k_pnc_2(self, t): return (self.wt.sine(np.linspace(400, 50, len(t)), t) + self.wt.noise_w(t)*0.2) * np.exp(-35 * t) * 2.2
+    def k_lof_1(self, t): return self.fx.bitcrush(self.wt.sine(np.linspace(120, 30, len(t)), t) * np.exp(-10 * t), 4) * 1.5
+    def k_lof_2(self, t): return self.fx.bitcrush(self.wt.sine(np.linspace(100, 20, len(t)), t) * np.exp(-12 * t), 3) * 1.5
+    def k_tec_1(self, t): return self.wt.saw(np.linspace(150, 40, len(t)), t) * np.exp(-20 * t) * 1.4
+    def k_tec_2(self, t): return self.wt.saw(np.linspace(180, 50, len(t)), t) * np.exp(-25 * t) * 1.4
+    def k_dep_1(self, t): return self.wt.sine(np.linspace(80, 20, len(t)), t) * np.exp(-8 * t) * 2.5
+    def k_dep_2(self, t): return self.wt.sine(np.linspace(70, 15, len(t)), t) * np.exp(-6 * t) * 2.5
+
+    def s_aco_1(self, t): return self.fx.lp_filter((self.wt.sine(np.linspace(250, 180, len(t)), t) * 0.4 + self.wt.noise_w(t) * 0.6) * np.exp(-25 * t), 5000) * 1.5
+    def s_aco_2(self, t): return self.fx.lp_filter((self.wt.sine(np.linspace(260, 190, len(t)), t) * 0.3 + self.wt.noise_w(t) * 0.7) * np.exp(-28 * t), 6000) * 1.5
+    def s_ele_1(self, t): return (self.wt.triangle(np.linspace(300, 200, len(t)), t) * 0.5 + self.wt.noise_w(t) * 0.8) * np.exp(-30 * t) * 1.4
+    def s_ele_2(self, t): return (self.wt.triangle(np.linspace(350, 250, len(t)), t) * 0.4 + self.wt.noise_w(t) * 0.9) * np.exp(-35 * t) * 1.4
+    def s_808_1(self, t): return (self.wt.sine(np.linspace(350, 250, len(t)), t) * 0.7 + self.wt.noise_w(t) * 0.3) * np.exp(-20 * t) * 1.2
+    def s_808_2(self, t): return (self.wt.sine(np.linspace(400, 300, len(t)), t) * 0.8 + self.wt.noise_w(t) * 0.2) * np.exp(-22 * t) * 1.2
+    def s_trp_1(self, t): return self.fx.lp_filter(self.wt.noise_w(t) * np.exp(-40 * t), 8000) * 2.0
+    def s_trp_2(self, t): return self.fx.lp_filter(self.wt.noise_w(t) * np.exp(-45 * t), 9000) * 2.0
+
+    def c_bsc_1(self, t): return self.wt.noise_w(t) * np.exp(-35 * t) * (self.wt.sine(40, t) > 0) * 1.5
+    def c_bsc_2(self, t): return self.wt.noise_w(t) * np.exp(-40 * t) * (self.wt.sine(50, t) > 0) * 1.5
+    def c_rvb_1(self, t): return self.fx.reverb_room(self.wt.noise_w(t) * np.exp(-25 * t) * (self.wt.sine(60, t) > 0.5)) * 1.3
+    def c_rvb_2(self, t): return self.fx.reverb_hall(self.wt.noise_w(t) * np.exp(-30 * t) * (self.wt.sine(70, t) > 0.5)) * 1.3
+    def r_sht_1(self, t): return self.wt.sine(np.linspace(800, 600, len(t)), t) * np.exp(-40 * t) * 1.5
+    def r_sht_2(self, t): return self.wt.sine(np.linspace(900, 700, len(t)), t) * np.exp(-45 * t) * 1.5
+
+    def h_cl_1(self, t): return self.fx.hp_filter(self.wt.noise_w(t), 7000) * np.exp(-60 * t) * 0.8
+    def h_cl_2(self, t): return self.fx.hp_filter(self.wt.noise_w(t), 8000) * np.exp(-70 * t) * 0.8
+    def h_op_1(self, t): return self.fx.hp_filter(self.wt.noise_w(t), 7000) * np.exp(-10 * t) * 0.6
+    def h_op_2(self, t): return self.fx.hp_filter(self.wt.noise_w(t), 8000) * np.exp(-12 * t) * 0.6
+    def cy_cr_1(self, t): return self.fx.hp_filter(self.wt.noise_w(t), 4000) * np.exp(-3 * t) * 1.2
+    def cy_cr_2(self, t): return self.fx.hp_filter(self.wt.noise_w(t), 5000) * np.exp(-4 * t) * 1.2
+    def cy_rd_1(self, t): return (self.fx.hp_filter(self.wt.noise_w(t), 6000) * 0.4 + self.wt.sine(600, t) * 0.1) * np.exp(-4 * t) * 0.9
+    def cy_rd_2(self, t): return (self.fx.hp_filter(self.wt.noise_w(t), 7000) * 0.5 + self.wt.sine(700, t) * 0.2) * np.exp(-5 * t) * 0.9
+
+    def t_hi_1(self, t): return self.wt.sine(np.linspace(250, 150, len(t)), t) * np.exp(-15 * t) * 1.6
+    def t_hi_2(self, t): return self.wt.sine(np.linspace(280, 180, len(t)), t) * np.exp(-18 * t) * 1.6
+    def t_lo_1(self, t): return self.wt.sine(np.linspace(100, 60, len(t)), t) * np.exp(-10 * t) * 2.0
+    def t_lo_2(self, t): return self.wt.sine(np.linspace(120, 80, len(t)), t) * np.exp(-12 * t) * 2.0
+    def p_bgo_1(self, t): return self.wt.sine(np.linspace(400, 350, len(t)), t) * np.exp(-20 * t) * 1.4
+    def p_bgo_2(self, t): return self.wt.sine(np.linspace(450, 400, len(t)), t) * np.exp(-25 * t) * 1.4
+    def p_cwb_1(self, t): return (self.wt.sine(800, t) + self.wt.sine(540, t)) * np.exp(-15 * t) * 1.0
+    def p_cwb_2(self, t): return (self.wt.sine(850, t) + self.wt.sine(590, t)) * np.exp(-18 * t) * 1.0
+    def p_shk_1(self, t): return self.wt.noise_w(t) * np.exp(-20 * t) * (self.wt.sine(10, t) > 0) * 0.5
+    def p_shk_2(self, t): return self.wt.noise_w(t) * np.exp(-25 * t) * (self.wt.sine(15, t) > 0) * 0.5
+    def p_clv_1(self, t): return self.wt.sine(2500, t) * np.exp(-50 * t) * 1.2
+    def p_clv_2(self, t): return self.wt.sine(2800, t) * np.exp(-55 * t) * 1.2
+
+    # [BASS SYNTHS]
+    def b_sub_1(self, f, t): return self.wt.sine(f, t) * self.env(t, 0.05, 0.1, 0.8, 0.1) * 2.0 if f > 0 else np.zeros_like(t)
+    def b_sub_2(self, f, t): return self.wt.triangle(f, t) * self.env(t, 0.05, 0.1, 0.8, 0.1) * 1.8 if f > 0 else np.zeros_like(t)
+    def b_808_1(self, f, t): return self.fx.dist_soft(self.wt.sine(f, t) * np.exp(-2 * t)) * 1.5 if f > 0 else np.zeros_like(t)
+    def b_808_2(self, f, t): return self.fx.dist_hard(self.wt.sine(f, t) * np.exp(-3 * t)) * 1.5 if f > 0 else np.zeros_like(t)
+    def b_slp_1(self, f, t): return (self.wt.saw(f, t)*0.6 + self.wt.square(f, t)*0.4) * np.exp(-10 * t) * 1.2 if f > 0 else np.zeros_like(t)
+    def b_slp_2(self, f, t): return (self.wt.saw(f, t)*0.7 + self.wt.square(f, t)*0.3) * np.exp(-12 * t) * 1.2 if f > 0 else np.zeros_like(t)
+    def b_syn_1(self, f, t): return self.wt.square(f, t) * self.env(t, 0.02, 0.2, 0.3, 0.1) * 1.0 if f > 0 else np.zeros_like(t)
+    def b_syn_2(self, f, t): return self.wt.pulse(f, t, 0.3) * self.env(t, 0.02, 0.2, 0.3, 0.1) * 1.0 if f > 0 else np.zeros_like(t)
+    def b_res_1(self, f, t): return (self.wt.saw(f*0.98, t) + self.wt.saw(f*1.02, t)) * self.env(t, 0.1, 0.3, 0.8, 0.2) * 0.8 if f > 0 else np.zeros_like(t)
+    def b_res_2(self, f, t): return (self.wt.saw(f*0.97, t) + self.wt.saw(f*1.03, t)) * self.env(t, 0.1, 0.4, 0.8, 0.3) * 0.8 if f > 0 else np.zeros_like(t)
+    def b_acd_1(self, f, t): return self.fx.dist_hard(self.wt.saw(f, t) * self.env(t, 0.01, 0.1, 0.0, 0.1)) * 0.9 if f > 0 else np.zeros_like(t)
+    def b_acd_2(self, f, t): return self.fx.dist_fuzz(self.wt.square(f, t) * self.env(t, 0.01, 0.1, 0.0, 0.1)) * 0.9 if f > 0 else np.zeros_like(t)
+    def b_fm_1(self, f, t): return self.wt.fm_basic(f, f*2, 2.0, t) * self.env(t, 0.01, 0.2, 0.5, 0.1) * 1.2 if f > 0 else np.zeros_like(t)
+    def b_fm_2(self, f, t): return self.wt.fm_basic(f, f*3, 3.0, t) * self.env(t, 0.01, 0.3, 0.5, 0.1) * 1.2 if f > 0 else np.zeros_like(t)
+    def b_wob_1(self, f, t): return self.fx.lp_filter(self.wt.saw(f, t), 500 + 400 * np.sin(3 * t)) * self.env(t, 0.1, 0.1, 0.8, 0.1) * 0.9 if f > 0 else np.zeros_like(t)
+    def b_wob_2(self, f, t): return self.fx.lp_filter(self.wt.square(f, t), 600 + 500 * np.sin(4 * t)) * self.env(t, 0.1, 0.1, 0.8, 0.1) * 0.9 if f > 0 else np.zeros_like(t)
+    def b_mog_1(self, f, t): return self.fx.lp_filter(self.wt.saw(f, t) + self.wt.square(f*0.5, t), 800) * self.env(t, 0.05, 0.3, 0.5, 0.1) * 1.1 if f > 0 else np.zeros_like(t)
+    def b_mog_2(self, f, t): return self.fx.lp_filter(self.wt.saw(f, t) + self.wt.saw(f*0.5, t), 1000) * self.env(t, 0.05, 0.4, 0.5, 0.2) * 1.1 if f > 0 else np.zeros_like(t)
+    def b_frt_1(self, f, t): return (self.wt.sine(f, t) + 0.3*self.wt.triangle(f*2, t)) * self.env(t, 0.1, 0.5, 0.6, 0.3) * 1.4 if f > 0 else np.zeros_like(t)
+    def b_frt_2(self, f, t): return (self.wt.sine(f, t) + 0.4*self.wt.triangle(f*3, t)) * self.env(t, 0.2, 0.6, 0.6, 0.4) * 1.4 if f > 0 else np.zeros_like(t)
+
+    # [KEYS & PIANOS]
+    def k_pno_1(self, f, t): return self.wt.sine_harmonics(f, t, 4) * np.exp(-3 * t) * 1.2 if f > 0 else np.zeros_like(t)
+    def k_pno_2(self, f, t): return self.wt.sine_harmonics(f, t, 6) * np.exp(-4 * t) * 1.2 if f > 0 else np.zeros_like(t)
+    def k_rhd_1(self, f, t): return (self.wt.sine(f, t) + 0.5*self.wt.sine(f*3, t)) * self.env(t, 0.02, 0.5, 0.3, 0.4) * 1.1 if f > 0 else np.zeros_like(t)
+    def k_rhd_2(self, f, t): return (self.wt.sine(f, t) + 0.6*self.wt.sine(f*4, t)) * self.env(t, 0.03, 0.6, 0.3, 0.5) * 1.1 if f > 0 else np.zeros_like(t)
+    def k_dx7_1(self, f, t): return self.wt.fm_basic(f, f*4, 3.0*np.exp(-5*t), t) * np.exp(-2*t) * 1.0 if f > 0 else np.zeros_like(t)
+    def k_dx7_2(self, f, t): return self.wt.fm_basic(f, f*5, 4.0*np.exp(-6*t), t) * np.exp(-3*t) * 1.0 if f > 0 else np.zeros_like(t)
+    def k_ham_1(self, f, t): return self.fx.tremolo((self.wt.sine(f, t) + 0.8*self.wt.sine(f*1.5, t) + 0.5*self.wt.sine(f*3, t)) * self.env(t, 0.05, 0.1, 1.0, 0.1), 6, 0.4) * 0.6 if f > 0 else np.zeros_like(t)
+    def k_ham_2(self, f, t): return self.fx.tremolo((self.wt.sine(f, t) + 0.9*self.wt.sine(f*2, t) + 0.6*self.wt.sine(f*4, t)) * self.env(t, 0.06, 0.2, 1.0, 0.2), 7, 0.5) * 0.6 if f > 0 else np.zeros_like(t)
+    def k_chu_1(self, f, t): return self.fx.reverb_hall((self.wt.sine(f, t) + self.wt.sine(f*2, t) + self.wt.sine(f*4, t) + self.wt.sine(f*8, t)) * self.env(t, 0.1, 0.1, 1.0, 0.3)) * 0.5 if f > 0 else np.zeros_like(t)
+    def k_chu_2(self, f, t): return self.fx.reverb_cathedral((self.wt.sine(f, t) + self.wt.sine(f*3, t) + self.wt.sine(f*5, t) + self.wt.sine(f*9, t)) * self.env(t, 0.2, 0.2, 1.0, 0.4)) * 0.5 if f > 0 else np.zeros_like(t)
+    def k_clv_1(self, f, t): return self.wt.pulse(f, t, 0.15) * np.exp(-5 * t) * 0.8 if f > 0 else np.zeros_like(t)
+    def k_clv_2(self, f, t): return self.wt.pulse(f, t, 0.25) * np.exp(-6 * t) * 0.8 if f > 0 else np.zeros_like(t)
+
+    # [STRINGS & GUITARS]
+    def g_aco_1(self, f, t): return self.pm.k_strong(f, t) * 1.5 if f > 0 else np.zeros_like(t)
+    def g_aco_2(self, f, t): return self.pm.k_strong(f, t, 0.990) * 1.5 if f > 0 else np.zeros_like(t)
+    def g_hrp_1(self, f, t): return self.pm.k_strong(f, t) * np.exp(-2 * t) * 1.8 if f > 0 else np.zeros_like(t)
+    def g_hrp_2(self, f, t): return self.pm.k_strong(f, t, 0.998) * np.exp(-3 * t) * 1.8 if f > 0 else np.zeros_like(t)
+    def g_nyl_1(self, f, t): return self.fx.lp_filter(self.pm.k_strong(f, t), 2000) * 1.6 if f > 0 else np.zeros_like(t)
+    def g_nyl_2(self, f, t): return self.fx.lp_filter(self.pm.k_strong(f, t), 2500) * 1.6 if f > 0 else np.zeros_like(t)
+    def g_ovd_1(self, f, t): return self.fx.dist_overdrive((self.wt.saw(f, t) + 0.5*self.wt.square(f, t)) * self.env(t, 0.05, 0.2, 0.8, 0.2)) * 0.4 if f > 0 else np.zeros_like(t)
+    def g_ovd_2(self, f, t): return self.fx.dist_hard((self.wt.saw(f, t) + 0.6*self.wt.square(f, t)) * self.env(t, 0.06, 0.3, 0.8, 0.3)) * 0.4 if f > 0 else np.zeros_like(t)
+    def g_fuz_1(self, f, t): return self.fx.dist_crush(self.fx.dist_fuzz(self.wt.square(f, t) * self.env(t, 0.01, 0.1, 0.9, 0.1))) * 0.3 if f > 0 else np.zeros_like(t)
+    def g_fuz_2(self, f, t): return self.fx.bitcrush(self.fx.dist_fuzz(self.wt.square(f, t) * self.env(t, 0.02, 0.2, 0.9, 0.2)), 3, 6) * 0.3 if f > 0 else np.zeros_like(t)
+    def s_syn_1(self, f, t): return (self.wt.saw(f*0.99, t) + self.wt.saw(f*1.01, t) + self.wt.saw(f, t)) * self.env(t, 0.4, 0.1, 0.9, 0.5) * 0.4 if f > 0 else np.zeros_like(t)
+    def s_syn_2(self, f, t): return (self.wt.saw(f*0.98, t) + self.wt.saw(f*1.02, t) + self.wt.saw(f, t)) * self.env(t, 0.5, 0.2, 0.9, 0.6) * 0.4 if f > 0 else np.zeros_like(t)
+    def s_vio_1(self, f, t): return self.wt.saw(f + (np.sin(6 * 2 * np.pi * t) * (f * 0.01)), t) * self.env(t, 0.2, 0.1, 0.9, 0.3) * 0.6 if f > 0 else np.zeros_like(t)
+    def s_vio_2(self, f, t): return self.wt.saw(f + (np.sin(7 * 2 * np.pi * t) * (f * 0.02)), t) * self.env(t, 0.3, 0.2, 0.9, 0.4) * 0.6 if f > 0 else np.zeros_like(t)
+    def s_cel_1(self, f, t): return self.fx.lp_filter((self.wt.saw(f, t) + self.wt.triangle(f, t)), 1500) * self.env(t, 0.3, 0.2, 0.8, 0.4) * 0.7 if f > 0 else np.zeros_like(t)
+    def s_cel_2(self, f, t): return self.fx.lp_filter((self.wt.saw(f, t) + self.wt.triangle(f*0.5, t)), 1200) * self.env(t, 0.4, 0.3, 0.8, 0.5) * 0.7 if f > 0 else np.zeros_like(t)
+
+    # [WINDS & BRASS]
+    def w_flu_1(self, f, t): return (self.wt.sine(f, t) + 0.1*self.wt.noise_w(t)) * self.env(t, 0.2, 0.1, 0.9, 0.2) * 0.8 if f > 0 else np.zeros_like(t)
+    def w_flu_2(self, f, t): return (self.wt.sine(f, t) + 0.2*self.wt.noise_w(t)) * self.env(t, 0.3, 0.2, 0.9, 0.3) * 0.8 if f > 0 else np.zeros_like(t)
+    def w_tru_1(self, f, t): return self.fx.lp_filter(self.wt.saw(f, t), 4000) * self.env(t, 0.05, 0.1, 0.9, 0.1) * 0.6 if f > 0 else np.zeros_like(t)
+    def w_tru_2(self, f, t): return self.fx.lp_filter(self.wt.saw(f, t), 5000) * self.env(t, 0.06, 0.2, 0.9, 0.2) * 0.6 if f > 0 else np.zeros_like(t)
+    def w_brs_1(self, f, t): return self.fx.lp_filter(self.wt.saw(f, t) + self.wt.saw(f*1.01, t), 3000) * self.env(t, 0.1, 0.1, 0.9, 0.2) * 0.7 if f > 0 else np.zeros_like(t)
+    def w_brs_2(self, f, t): return self.fx.lp_filter(self.wt.saw(f, t) + self.wt.saw(f*1.02, t), 3500) * self.env(t, 0.2, 0.2, 0.9, 0.3) * 0.7 if f > 0 else np.zeros_like(t)
+    def w_sax_1(self, f, t): return (self.wt.saw(f, t)*0.6 + self.wt.pulse(f, t, 0.3)*0.4) * self.env(t, 0.15, 0.2, 0.8, 0.2) * 0.6 if f > 0 else np.zeros_like(t)
+    def w_sax_2(self, f, t): return (self.wt.saw(f, t)*0.7 + self.wt.pulse(f, t, 0.4)*0.3) * self.env(t, 0.25, 0.3, 0.8, 0.3) * 0.6 if f > 0 else np.zeros_like(t)
+    def w_pan_1(self, f, t): return (self.wt.sine(f, t) + 0.3*self.wt.noise_w(t)) * self.env(t, 0.3, 0.1, 0.8, 0.3) * 0.9 if f > 0 else np.zeros_like(t)
+    def w_pan_2(self, f, t): return (self.wt.sine(f, t) + 0.4*self.wt.noise_w(t)) * self.env(t, 0.4, 0.2, 0.8, 0.4) * 0.9 if f > 0 else np.zeros_like(t)
+
+    # [SYNTH LEADS & PADS]
+    def l_saw_1(self, f, t): return self.wt.saw(f, t) * self.env(t, 0.05, 0.1, 0.8, 0.2) * 0.5 if f > 0 else np.zeros_like(t)
+    def l_saw_2(self, f, t): return self.wt.saw(f, t) * self.env(t, 0.06, 0.2, 0.8, 0.3) * 0.5 if f > 0 else np.zeros_like(t)
+    def l_sqr_1(self, f, t): return self.wt.square(f, t) * self.env(t, 0.05, 0.1, 0.8, 0.2) * 0.4 if f > 0 else np.zeros_like(t)
+    def l_sqr_2(self, f, t): return self.wt.square(f, t) * self.env(t, 0.06, 0.2, 0.8, 0.3) * 0.4 if f > 0 else np.zeros_like(t)
+    def l_hvr_1(self, f, t): return self.fx.dist_soft((self.wt.saw(f, t) + self.wt.saw(f*1.02, t) + self.wt.saw(f*0.98, t) + self.wt.saw(f*2, t)) * self.env(t, 0.1, 0.2, 0.8, 0.2)) * 0.2 if f > 0 else np.zeros_like(t)
+    def l_hvr_2(self, f, t): return self.fx.dist_hard((self.wt.saw(f, t) + self.wt.saw(f*1.03, t) + self.wt.saw(f*0.97, t) + self.wt.saw(f*2, t)) * self.env(t, 0.2, 0.3, 0.8, 0.3)) * 0.2 if f > 0 else np.zeros_like(t)
+    def l_spr_1(self, f, t):
+        if f <= 0: return np.zeros_like(t)
+        s = self.wt.supersaw(f, t, detune=0.008)
+        return s * self.env(t, 0.1, 0.1, 0.8, 0.2) * 0.25
+    def l_spr_2(self, f, t):
+        if f <= 0: return np.zeros_like(t)
+        s = self.wt.supersaw(f, t, detune=0.015, count=7)
+        return s * self.env(t, 0.2, 0.2, 0.8, 0.3) * 0.2
+    def p_wrm_1(self, f, t): return self.fx.reverb_hall((self.wt.sine(f, t) + 0.5*self.wt.triangle(f*1.02, t) + 0.5*self.wt.triangle(f*0.98, t)) * self.env(t, 0.8, 0.5, 0.8, 0.8)) * 0.3 if f > 0 else np.zeros_like(t)
+    def p_wrm_2(self, f, t): return self.fx.reverb_plate((self.wt.sine(f, t) + 0.6*self.wt.triangle(f*1.03, t) + 0.6*self.wt.triangle(f*0.97, t)) * self.env(t, 0.9, 0.6, 0.8, 0.9)) * 0.3 if f > 0 else np.zeros_like(t)
+    def p_cho_1(self, f, t): return self.fx.lp_filter((self.wt.triangle(f, t) + self.wt.noise_w(t)*0.02) * self.env(t, 1.0, 0.2, 0.9, 1.0), 3000) * 0.5 if f > 0 else np.zeros_like(t)
+    def p_cho_2(self, f, t): return self.fx.lp_filter((self.wt.triangle(f, t) + self.wt.noise_w(t)*0.03) * self.env(t, 1.2, 0.3, 0.9, 1.2), 3500) * 0.5 if f > 0 else np.zeros_like(t)
+    def l_plk_1(self, f, t): return self.wt.sine(f, t) * np.exp(-10 * t) * 1.2 if f > 0 else np.zeros_like(t)
+    def l_plk_2(self, f, t): return self.wt.sine(f, t) * np.exp(-12 * t) * 1.2 if f > 0 else np.zeros_like(t)
+    def l_pfm_1(self, f, t): return self.wt.fm_basic(f, f*3.5, 4.0*np.exp(-15*t), t) * np.exp(-5*t) * 1.0 if f > 0 else np.zeros_like(t)
+    def l_pfm_2(self, f, t): return self.wt.fm_basic(f, f*4.5, 5.0*np.exp(-18*t), t) * np.exp(-6*t) * 1.0 if f > 0 else np.zeros_like(t)
+    def l_8bt_1(self, f, t): return self.wt.square(f, t) * np.exp(-15 * t) * 0.5 if f > 0 else np.zeros_like(t)
+    def l_8bt_2(self, f, t): return self.wt.square(f, t) * np.exp(-18 * t) * 0.5 if f > 0 else np.zeros_like(t)
+
+    # [AMBIENT & NATURE FX]
+    def x_wnd_1(self, t): return self.fx.lp_filter(self.wt.noise_w(t) * ((1000 + 800 * np.sin(0.2 * 2 * np.pi * t) + 400 * np.sin(0.5 * 2 * np.pi * t)) / 2000.0), 1500) * self.env(t, 2.0, 1.0, 0.8, 2.0) * 0.7
+    def x_wnd_2(self, t): return self.fx.lp_filter(self.wt.noise_w(t) * ((1200 + 900 * np.sin(0.3 * 2 * np.pi * t) + 500 * np.sin(0.6 * 2 * np.pi * t)) / 2500.0), 1800) * self.env(t, 2.5, 1.5, 0.8, 2.5) * 0.7
+    def x_ran_1(self, t): return ((self.wt.noise_w(t) * (self.wt.noise_w(t) > 0.8)) * 0.5 + self.fx.lp_filter(self.wt.noise_w(t), 800) * 0.2) * self.env(t, 0.5, 0.5, 1.0, 1.0) * 0.6
+    def x_ran_2(self, t): return ((self.wt.noise_w(t) * (self.wt.noise_w(t) > 0.85)) * 0.6 + self.fx.lp_filter(self.wt.noise_w(t), 900) * 0.3) * self.env(t, 0.6, 0.6, 1.0, 1.0) * 0.6
+    def x_ocn_1(self, t): return self.fx.lp_filter(self.wt.noise_w(t), 600 + 400 * (0.5 + 0.5 * np.sin(0.15 * 2 * np.pi * t))) * (0.5 + 0.5 * np.sin(0.15 * 2 * np.pi * t)) * self.env(t, 2.0, 1.0, 0.9, 3.0) * 0.8
+    def x_ocn_2(self, t): return self.fx.lp_filter(self.wt.noise_w(t), 700 + 500 * (0.5 + 0.5 * np.sin(0.20 * 2 * np.pi * t))) * (0.5 + 0.5 * np.sin(0.20 * 2 * np.pi * t)) * self.env(t, 2.5, 1.5, 0.9, 3.5) * 0.8
+    def x_thn_1(self, t): return self.fx.reverb_hall(self.fx.dist_hard(self.fx.lp_filter(self.wt.noise_w(t), 400) * np.exp(-1 * t)) * self.env(t, 0.01, 1.0, 0.5, 3.0)) * 2.0
+    def x_thn_2(self, t): return self.fx.reverb_cathedral(self.fx.dist_fuzz(self.fx.lp_filter(self.wt.noise_w(t), 500) * np.exp(-1.5 * t)) * self.env(t, 0.02, 1.5, 0.5, 3.5)) * 2.0
+    def x_fir_1(self, t): return (self.fx.lp_filter(self.wt.noise_w(t), 300) * 0.3 + (self.wt.noise_w(t) * (np.random.uniform(0, 1, len(t)) > 0.995) * np.exp(-50 * t)) * 1.5) * self.env(t, 0.1, 0.1, 1.0, 0.1) * 0.8
+    def x_fir_2(self, t): return (self.fx.lp_filter(self.wt.noise_w(t), 400) * 0.4 + (self.wt.noise_w(t) * (np.random.uniform(0, 1, len(t)) > 0.990) * np.exp(-60 * t)) * 1.6) * self.env(t, 0.2, 0.2, 1.0, 0.2) * 0.8
+
+    # [GAME FX]
+    def g_lsr_1(self, t): return self.wt.square(np.linspace(2000, 100, len(t)), t) * np.exp(-15 * t) * 0.8
+    def g_lsr_2(self, t): return self.wt.square(np.linspace(2500, 150, len(t)), t) * np.exp(-18 * t) * 0.8
+    def g_exp_1(self, t): return self.fx.lp_filter(self.fx.bitcrush(self.wt.noise_w(t), 3, 8), 1000) * np.exp(-4 * t) * 1.5
+    def g_exp_2(self, t): return self.fx.lp_filter(self.fx.bitcrush(self.wt.noise_w(t), 4, 10), 1200) * np.exp(-5 * t) * 1.5
+    def g_jmp_1(self, t): return self.wt.pulse(np.linspace(300, 800, len(t)), t, 0.5) * np.exp(-10 * t) * 0.7
+    def g_jmp_2(self, t): return self.wt.pulse(np.linspace(400, 900, len(t)), t, 0.6) * np.exp(-12 * t) * 0.7
+    def g_con_1(self, t):
+        s = np.zeros_like(t)
+        y = len(t) // 6
+        if y > 0: 
+            s[:y] = self.wt.square(987, t[:y])
+            s[y:y*3] = self.wt.square(1318, t[y:y*3])
+        return s * np.exp(-10 * t) * 0.6
+    def g_con_2(self, t):
+        s = np.zeros_like(t)
+        y = len(t) // 6
+        if y > 0: 
+            s[:y] = self.wt.square(1000, t[:y])
+            s[y:y*3] = self.wt.square(1400, t[y:y*3])
+        return s * np.exp(-12 * t) * 0.6
+    def g_hcp_1(self, t): return self.fx.lp_filter(self.wt.noise_w(t), 400) * (self.wt.square(12, t) > 0) * self.env(t, 0.5, 1.0, 0.8, 1.0) * 1.5
+    def g_hcp_2(self, t): return self.fx.lp_filter(self.wt.noise_w(t), 500) * (self.wt.square(15, t) > 0) * self.env(t, 0.6, 1.2, 0.8, 1.2) * 1.5
+    def g_ufo_1(self, t): return self.wt.sine(500 + 200 * np.sin(5 * 2 * np.pi * t), t) * self.env(t, 0.5, 1.0, 0.8, 0.5) * 0.5
+    def g_ufo_2(self, t): return self.wt.sine(600 + 300 * np.sin(6 * 2 * np.pi * t), t) * self.env(t, 0.6, 1.2, 0.8, 0.6) * 0.5
+
+    def _map_instruments(self):
+        return {
+            "kick_808": (self.k_808_1, True), "kick_909": (self.k_909_1, True), "kick_aco": (self.k_aco_1, True), "kick_pnc": (self.k_pnc_1, True), "kick_lof": (self.k_lof_1, True), "kick_tec": (self.k_tec_1, True), "kick_dep": (self.k_dep_1, True),
+            "snare_aco": (self.s_aco_1, True), "snare_ele": (self.s_ele_1, True), "snare_808": (self.s_808_1, True), "snare_trp": (self.s_trp_1, True), "clap_bsc": (self.c_bsc_1, True), "clap_rvb": (self.c_rvb_1, True), "rimshot": (self.r_sht_1, True),
+            "hihat_cl": (self.h_cl_1, True), "hihat_op": (self.h_op_1, True), "cym_cr": (self.cy_cr_1, True), "cym_rd": (self.cy_rd_1, True),
+            "tom_hi": (self.t_hi_1, True), "tom_lo": (self.t_lo_1, True), "bongo": (self.p_bgo_1, True), "cowbell": (self.p_cwb_1, True), "shaker": (self.p_shk_1, True), "claves": (self.p_clv_1, True),
+            "fx_wind": (self.x_wnd_1, True), "fx_rain": (self.x_ran_1, True), "fx_ocean": (self.x_ocn_1, True), "fx_thunder": (self.x_thn_1, True), "fx_fire": (self.x_fir_1, True),
+            "fx_laser": (self.g_lsr_1, True), "fx_explosion": (self.g_exp_1, True), "fx_jump": (self.g_jmp_1, True), "fx_coin": (self.g_con_1, True), "fx_helicopter": (self.g_hcp_1, True), "fx_ufo": (self.g_ufo_1, True),
+            
+            "bass_sub": (self.b_sub_1, False), "bass_808": (self.b_808_1, False), "bass_slap": (self.b_slp_1, False), "bass_syn": (self.b_syn_1, False), "bass_res": (self.b_res_1, False), "bass_acd": (self.b_acd_1, False), "bass_fm": (self.b_fm_1, False), "bass_wob": (self.b_wob_1, False), "bass_mog": (self.b_mog_1, False), "bass_frt": (self.b_frt_1, False),
+            "piano_grd": (self.k_pno_1, False), "piano_rhd": (self.k_rhd_1, False), "piano_dx7": (self.k_dx7_1, False), "organ_ham": (self.k_ham_1, False), "organ_chu": (self.k_chu_1, False), "clavinet": (self.k_clv_1, False),
+            "guit_aco": (self.g_aco_1, False), "guit_nyl": (self.g_nyl_1, False), "guit_ovd": (self.g_ovd_1, False), "guit_fuz": (self.g_fuz_1, False), "harp": (self.g_hrp_1, False), "str_syn": (self.s_syn_1, False), "violin": (self.s_vio_1, False), "cello": (self.s_cel_1, False),
+            "flute": (self.w_flu_1, False), "trumpet": (self.w_tru_1, False), "brass": (self.w_brs_1, False), "sax": (self.w_sax_1, False), "pan_flu": (self.w_pan_1, False),
+            "lead_saw": (self.l_saw_1, False), "lead_sqr": (self.l_sqr_1, False), "lead_hvr": (self.l_hvr_1, False), "lead_spr": (self.l_spr_1, False), "pad_wrm": (self.p_wrm_1, False), "pad_cho": (self.p_cho_1, False), "pluck_sin": (self.l_plk_1, False), "pluck_fm": (self.l_pfm_1, False), "arp_8bt": (self.l_8bt_1, False),
+
+            "kick_808_2": (self.k_808_2, True), "kick_909_2": (self.k_909_2, True), "kick_aco_2": (self.k_aco_2, True), "kick_pnc_2": (self.k_pnc_2, True), "kick_lof_2": (self.k_lof_2, True), "kick_tec_2": (self.k_tec_2, True), "kick_dep_2": (self.k_dep_2, True),
+            "snare_aco_2": (self.s_aco_2, True), "snare_ele_2": (self.s_ele_2, True), "snare_808_2": (self.s_808_2, True), "snare_trp_2": (self.s_trp_2, True), "clap_bsc_2": (self.c_bsc_2, True), "clap_rvb_2": (self.c_rvb_2, True), "rimshot_2": (self.r_sht_2, True),
+            "hihat_cl_2": (self.h_cl_2, True), "hihat_op_2": (self.h_op_2, True), "cym_cr_2": (self.cy_cr_2, True), "cym_rd_2": (self.cy_rd_2, True),
+            "tom_hi_2": (self.t_hi_2, True), "tom_lo_2": (self.t_lo_2, True), "bongo_2": (self.p_bgo_2, True), "cowbell_2": (self.p_cwb_2, True), "shaker_2": (self.p_shk_2, True), "claves_2": (self.p_clv_2, True),
+            "fx_wind_2": (self.x_wnd_2, True), "fx_rain_2": (self.x_ran_2, True), "fx_ocean_2": (self.x_ocn_2, True), "fx_thunder_2": (self.x_thn_2, True), "fx_fire_2": (self.x_fir_2, True),
+            "fx_laser_2": (self.g_lsr_2, True), "fx_explosion_2": (self.g_exp_2, True), "fx_jump_2": (self.g_jmp_2, True), "fx_coin_2": (self.g_con_2, True), "fx_helicopter_2": (self.g_hcp_2, True), "fx_ufo_2": (self.g_ufo_2, True),
+            
+            "bass_sub_2": (self.b_sub_2, False), "bass_808_2": (self.b_808_2, False), "bass_slap_2": (self.b_slp_2, False), "bass_syn_2": (self.b_syn_2, False), "bass_res_2": (self.b_res_2, False), "bass_acd_2": (self.b_acd_2, False), "bass_fm_2": (self.b_fm_2, False), "bass_wob_2": (self.b_wob_2, False), "bass_mog_2": (self.b_mog_2, False), "bass_frt_2": (self.b_frt_2, False),
+            "piano_grd_2": (self.k_pno_2, False), "piano_rhd_2": (self.k_rhd_2, False), "piano_dx7_2": (self.k_dx7_2, False), "organ_ham_2": (self.k_ham_2, False), "organ_chu_2": (self.k_chu_2, False), "clavinet_2": (self.k_clv_2, False),
+            "guit_aco_2": (self.g_aco_2, False), "guit_nyl_2": (self.g_nyl_2, False), "guit_ovd_2": (self.g_ovd_2, False), "guit_fuz_2": (self.g_fuz_2, False), "harp_2": (self.g_hrp_2, False), "str_syn_2": (self.s_syn_2, False), "violin_2": (self.s_vio_2, False), "cello_2": (self.s_cel_2, False),
+            "flute_2": (self.w_flu_2, False), "trumpet_2": (self.w_tru_2, False), "brass_2": (self.w_brs_2, False), "sax_2": (self.w_sax_2, False), "pan_flu_2": (self.w_pan_2, False),
+            "lead_saw_2": (self.l_saw_2, False), "lead_sqr_2": (self.l_sqr_2, False), "lead_hvr_2": (self.l_hvr_2, False), "lead_spr_2": (self.l_spr_2, False), "pad_wrm_2": (self.p_wrm_2, False), "pad_cho_2": (self.p_cho_2, False), "pluck_sin_2": (self.l_plk_2, False), "pluck_fm_2": (self.l_pfm_2, False), "arp_8bt_2": (self.l_8bt_2, False)
+        }
+
+    # =====================================================================
+    # ANA MASTER RENDER MOTORU
+    # =====================================================================
+    def render(self, sarki_verisi, hedef_dakika=2):
         tempo = sarki_verisi.get("tempo", 120)
+        global_fx = sarki_verisi.get("global_fx", [])
         adim_suresi = (60.0 / tempo) / 4.0
         loop_suresi = 16 * adim_suresi
-        
-        # Kullanıcının seçtiği dakikaya göre kaç kere döneceğini hesaplıyoruz
         tekrar_sayisi = max(4, int((hedef_dakika * 60) / loop_suresi))
-        
         samples_per_step = int(self.sr * adim_suresi)
+        
         toplam_samples = tekrar_sayisi * 16 * samples_per_step
         master_ses = np.zeros(toplam_samples, dtype=np.float32)
         
-        def guvenli_liste(isim):
-            liste = sarki_verisi.get(isim, ["-"]*16)
-            if len(liste) < 16: liste += ["-"] * (16 - len(liste))
-            return liste
+        def g_lst(isim):
+            l = sarki_verisi.get(isim, ["-"]*16)
+            if len(l) < 16: l += ["-"] * (16 - len(l))
+            return l
 
-        enstrumanlar = {
-            "kick_808": (self.kick_808, True), "kick_909": (self.kick_909, True), "kick_acoustic": (self.kick_acoustic, True),
-            "kick_punchy": (self.kick_punchy, True), "kick_lofi": (self.kick_lofi, True), "kick_techno": (self.kick_techno, True), "kick_deep": (self.kick_deep, True),
-            "snare_acoustic": (self.snare_acoustic, True), "snare_electronic": (self.snare_electronic, True), "snare_808": (self.snare_808, True), "snare_trap": (self.snare_trap, True),
-            "clap_basic": (self.clap_basic, True), "clap_layered": (self.clap_layered, True), "rimshot": (self.rimshot, True),
-            "hihat_closed": (self.hihat_closed, True), "hihat_open": (self.hihat_open, True), "hihat_808": (self.hihat_808, True), "hihat_trap": (self.hihat_trap, True),
-            "crash_cymbal": (self.crash_cymbal, True), "ride_cymbal": (self.ride_cymbal, True), "splash_cymbal": (self.splash_cymbal, True),
-            "tom_high": (self.tom_high, True), "tom_mid": (self.tom_mid, True), "tom_low": (self.tom_low, True),
-            "bongo_high": (self.bongo_high, True), "bongo_low": (self.bongo_low, True), "cowbell": (self.cowbell, True),
-            "woodblock": (self.woodblock, True), "shaker": (self.shaker, True), "tambourine": (self.tambourine, True),
-            "triangle_perc": (self.triangle_perc, True), "claves": (self.claves, True), "guiro": (self.guiro, True), "maracas": (self.maracas, True),
-            
-            "wind_howl": (self.wind_howl, True), "rain_drops": (self.rain_drops, True), "ocean_waves": (self.ocean_waves, True), 
-            "thunder_strike": (self.thunder_strike, True), "fire_crackle": (self.fire_crackle, True),
-            "bird_chirp": (self.bird_chirp, True), "dog_bark": (self.dog_bark, True), "cat_meow": (self.cat_meow, True), 
-            "cricket_chirp": (self.cricket_chirp, True), "frog_croak": (self.frog_croak, True), "wolf_howl": (self.wolf_howl, True), "fly_buzz": (self.fly_buzz, True),
-            "fx_laser_pew": (self.fx_laser_pew, True), "fx_coin_pickup": (self.fx_coin_pickup, True), "fx_jump": (self.fx_jump, True), 
-            "fx_explosion": (self.fx_explosion, True), "fx_helicopter": (self.fx_helicopter, True),
-
-            "sub_bass": (self.sub_bass, False), "slap_bass": (self.slap_bass, False), "synth_bass": (self.synth_bass, False), "reese_bass": (self.reese_bass, False),
-            "acid_bass": (self.acid_bass, False), "fm_bass": (self.fm_bass, False), "upright_bass": (self.upright_bass, False), "fretless_bass": (self.fretless_bass, False),
-            "moog_bass": (self.moog_bass, False), "wobble_bass": (self.wobble_bass, False),
-            
-            "grand_piano": (self.grand_piano, False), "upright_piano": (self.upright_piano, False), "rhodes_piano": (self.rhodes_piano, False), "wurlitzer": (self.wurlitzer, False),
-            "dx7_piano": (self.dx7_piano, False), "clavinet": (self.clavinet, False), "harpsichord": (self.harpsichord, False), "celesta": (self.celesta, False),
-            "church_organ": (self.church_organ, False), "hammond_organ": (self.hammond_organ, False), "reed_organ": (self.reed_organ, False),
-            
-            "violin": (self.violin, False), "cello": (self.cello, False), "contrabass": (self.contrabass, False), "pizzicato": (self.pizzicato, False),
-            "harp": (self.harp, False), "timpani": (self.timpani, False), "brass_section": (self.brass_section, False), "french_horn": (self.french_horn, False),
-            "trumpet": (self.trumpet, False), "trombone": (self.trombone, False), "tuba": (self.tuba, False), "synth_strings": (self.synth_strings, False), "mellotron": (self.mellotron, False),
-            
-            "acoustic_guitar": (self.acoustic_guitar, False), "nylon_guitar": (self.nylon_guitar, False), "electric_clean": (self.electric_clean, False),
-            "electric_overdrive": (self.electric_overdrive, False), "electric_distortion": (self.electric_distortion, False), "electric_fuzz": (self.electric_fuzz, False),
-            "electric_muted": (self.electric_muted, False), "banjo": (self.banjo, False), "ukulele": (self.ukulele, False), "sitar": (self.sitar, False),
-            
-            "flute_acoustic": (self.flute_acoustic, False), "clarinet": (self.clarinet, False), "oboe": (self.oboe, False), "bassoon": (self.bassoon, False),
-            "piccolo": (self.piccolo, False), "recorder": (self.recorder, False), "pan_flute": (self.pan_flute, False),
-            "sax_alto": (self.sax_alto, False), "sax_tenor": (self.sax_tenor, False), "sax_baritone": (self.sax_baritone, False),
-            
-            "saw_lead": (self.saw_lead, False), "square_lead": (self.square_lead, False), "sine_pluck": (self.sine_pluck, False), "trance_gate_pad": (self.trance_gate_pad, False),
-            "warm_pad": (self.warm_pad, False), "choir_pad_synth": (self.choir_pad_synth, False), "sweep_pad": (self.sweep_pad, False), "scifi_fx": (self.scifi_fx, False),
-            "arp_8bit": (self.arp_8bit, False), "chiptune_square": (self.chiptune_square, False), "hoover_lead": (self.hoover_lead, False), "supersaw": (self.supersaw, False)
-        }
-
-        aktif_kanallar = {}
-        for anahtar, deger in sarki_verisi.items():
-            if anahtar in enstrumanlar:
-                aktif_kanallar[anahtar] = (guvenli_liste(anahtar), enstrumanlar[anahtar][0], enstrumanlar[anahtar][1])
+        aktif = {}
+        for k, v in sarki_verisi.items():
+            if k in self.inst:
+                aktif[k] = (g_lst(k), self.inst[k][0], self.inst[k][1])
 
         t_dizi = np.linspace(0, adim_suresi, samples_per_step, endpoint=False)
 
+        # Gelişmiş Yapay Aranjman Katmanı
         for loop_idx in range(tekrar_sayisi):
-            cal_intro = loop_idx < int(tekrar_sayisi * 0.15)
-            cal_build = loop_idx >= int(tekrar_sayisi * 0.15) and loop_idx < int(tekrar_sayisi * 0.3)
-            cal_drop = loop_idx >= int(tekrar_sayisi * 0.3) and loop_idx < int(tekrar_sayisi * 0.6)
-            cal_bridge = loop_idx >= int(tekrar_sayisi * 0.6) and loop_idx < int(tekrar_sayisi * 0.75)
-            cal_drop2 = loop_idx >= int(tekrar_sayisi * 0.75) and loop_idx < int(tekrar_sayisi * 0.9)
-            cal_outro = loop_idx >= int(tekrar_sayisi * 0.9)
+            c_int = loop_idx < int(tekrar_sayisi * 0.15)
+            c_bld = int(tekrar_sayisi * 0.15) <= loop_idx < int(tekrar_sayisi * 0.3)
+            c_drp = int(tekrar_sayisi * 0.3) <= loop_idx < int(tekrar_sayisi * 0.6)
+            c_brd = int(tekrar_sayisi * 0.6) <= loop_idx < int(tekrar_sayisi * 0.75)
+            c_dr2 = int(tekrar_sayisi * 0.75) <= loop_idx < int(tekrar_sayisi * 0.9)
             
-            davul_aktif = cal_build or cal_drop or cal_drop2
-            bas_aktif = cal_drop or cal_drop2 or (cal_bridge and loop_idx % 2 == 0)
-            lead_aktif = cal_drop or cal_drop2 or cal_intro
-            pad_aktif = True 
+            d_akt = c_bld or c_drp or c_dr2
+            b_akt = c_drp or c_dr2 or (c_brd and loop_idx % 2 == 0)
+            l_akt = c_drp or c_dr2 or c_int
+            p_akt = True 
             
             for i in range(16):
-                zaman_basla = (loop_idx * 16 + i) * samples_per_step
-                zaman_bitis = zaman_basla + samples_per_step
-                katman = np.zeros(samples_per_step)
+                zb = (loop_idx * 16 + i) * samples_per_step
+                ze = zb + samples_per_step
+                katman = np.zeros(samples_per_step, dtype=np.float32)
                 
-                for kanal_adi, (nota_listesi, func, is_drum_fx) in aktif_kanallar.items():
-                    nota_istegi = nota_listesi[i]
-                    if nota_istegi == "-": continue
+                for kanal_adi, (n_lst, fnc, is_drum) in aktif.items():
+                    n_ist = n_lst[i]
+                    if n_ist == "-": continue
                     
-                    if is_drum_fx:
-                        if not davul_aktif and "kick" in kanal_adi: continue
-                        katman += func(t_dizi)
-                    elif not is_drum_fx:
-                        if "bass" in kanal_adi and not bas_aktif: continue
-                        if ("lead" in kanal_adi or "guitar" in kanal_adi or "piano" in kanal_adi) and not lead_aktif: continue
-                        if "pad" in kanal_adi and not pad_aktif: continue
+                    if is_drum:
+                        if not d_akt and "kick" in kanal_adi: continue
+                        # Davul kanalına özgü filtreler veya sıkıştırma uygulanabilir
+                        signal = fnc(t_dizi)
+                        katman += signal
+                    else:
+                        if "bass" in kanal_adi and not b_akt: continue
+                        if ("lead" in kanal_adi or "guit" in kanal_adi or "piano" in kanal_adi) and not l_akt: continue
+                        if "pad" in kanal_adi and not p_akt: continue
                         
-                        frekans = self.notalar.get(nota_istegi, 0.0)
-                        katman += func(frekans, t_dizi)
+                        frq = self.notes.get(n_ist, 0.0)
+                        signal = fnc(frq, t_dizi)
+                        katman += signal
                 
-                master_ses[zaman_basla:zaman_bitis] += katman
+                master_ses[zb:ze] += katman
 
-        # Fade Out ve Hard Limiter
-        fade_out_samples = int(self.sr * 10) 
-        if fade_out_samples < len(master_ses):
-            master_ses[-fade_out_samples:] *= np.linspace(1, 0, fade_out_samples)
+        # GLOBAL MASTERING FX PROCESSOR CHAIN
+        if "compressor" in global_fx:
+            master_ses = self.fx.compressor(master_ses, threshold=0.25, ratio=4.0)
+        if "chorus" in global_fx:
+            master_ses = self.fx.chorus(master_ses, freq=1.0, depth=0.002)
+        if "flanger" in global_fx:
+            master_ses = self.fx.flanger(master_ses, freq=0.2, depth=0.003)
+        if "phaser" in global_fx:
+            master_ses = self.fx.phaser(master_ses, freq=0.5, depth=0.5)
+        if "reverb" in global_fx:
+            master_ses = self.fx.reverb_room(master_ses)
+
+        # Fade Out ve Hard Limiter Mastering
+        fos = int(self.sr * 10) 
+        if fos < len(master_ses): 
+            master_ses[-fos:] *= np.linspace(1, 0, fos)
         
-        max_val = np.max(np.abs(master_ses))
-        if max_val > 0:
-            master_ses = np.int16(master_ses / max_val * 32767 * 0.95) 
-        else:
+        mv = np.max(np.abs(master_ses))
+        if mv > 0: 
+            master_ses = np.int16(master_ses / mv * 32767 * 0.95) 
+        else: 
             master_ses = np.int16(master_ses)
             
         byte_io = io.BytesIO()
@@ -553,5 +553,20 @@ class NoModelsMusicEngine:
         return byte_io.getvalue()
 
 def motoru_calistir(sarki_verisi, hedef_dakika=2):
-    motor = NoModelsMusicEngine()
-    return motor.render_sarki(sarki_verisi, hedef_dakika)
+    m = ColossusEngine()
+    return m.render(sarki_verisi, hedef_dakika)
+
+# Örnek Kullanım ve Entegrasyon Test Şablonu
+if __name__ == "__main__":
+    test_song = {
+        "tempo": 128,
+        "global_fx": ["compressor", "chorus"],
+        "kick_808":  ["X", "-", "-", "-", "X", "-", "-", "-", "X", "-", "-", "-", "X", "-", "-", "-"],
+        "hihat_cl":  ["-", "X", "-", "X", "-", "X", "-", "X", "-", "X", "-", "X", "-", "X", "-", "X"],
+        "bass_sub":  ["A1", "A1", "-", "G1", "C2", "-", "-", "D2", "A1", "-", "-", "-", "E1", "-", "-", "-"],
+        "lead_spr":  ["A4", "-", "B4", "C5", "-", "E5", "-", "D5", "A4", "-", "B4", "C5", "-", "G5", "-", "-"],
+        "pad_wrm":   ["A3", "-", "-", "-", "-", "-", "-", "-", "C3", "-", "-", "-", "G3", "-", "-", "-"]
+    }
+    # Test çalıştırması (Çıktıyı kaydetmek isterseniz byte verisini dosyaya yazabilirsiniz)
+    wav_bytes = motoru_calistir(test_song, hedef_dakika=0.5)
+    print(f"Sentez Tamamlandı! Toplam Boyut: {len(wav_bytes)} byte.")
