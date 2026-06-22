@@ -1,4 +1,4 @@
-[22.06 20:28] Annem: import streamlit as st
+import streamlit as st
 from openai import OpenAI
 from tavily import TavilyClient
 import json
@@ -178,7 +178,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                             if sayfa.extract_text()
                         ]
                     )
-[22.06 20:28] Annem: elif dosya_adi.endswith(".docx"):
+                    elif dosya_adi.endswith(".docx"):
                     doc = Document(yuklenen_dosya)
                     icerik = "\n".join(
                         [p.text for p in doc.paragraphs]
@@ -318,7 +318,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
 
                 except:
                     pass
-[22.06 20:31] Annem: # ==========================================
+# ==========================================
 # 3. MOD: SESLİ YANIT
 # ==========================================
 elif uygulama_modu == "Sesli Yanıt 🗣️":
