@@ -570,3 +570,9 @@ if __name__ == "__main__":
     # Test çalıştırması (Çıktıyı kaydetmek isterseniz byte verisini dosyaya yazabilirsiniz)
     wav_bytes = motoru_calistir(test_song, hedef_dakika=0.5)
     print(f"Sentez Tamamlandı! Toplam Boyut: {len(wav_bytes)} byte.")
+# ... (DSP Motorunun kodları bittikten sonra) ...
+
+# İLETİŞİM ANAHTARI: Bu sınıfı app.py'nin tanıması için dışa açık tutuyoruz
+def motoru_calistir(sarki_verisi, hedef_dakika=2):
+    m = ColossusEngine()
+    return m.render(sarki_verisi, hedef_dakika)
