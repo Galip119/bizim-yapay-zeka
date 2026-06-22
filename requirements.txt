@@ -10,6 +10,4 @@ pytesseract
 gTTS
 numpy
 scipy
-pydub
 requests
-Pyaudioop 
