@@ -11,3 +11,4 @@ gTTS
 numpy
 scipy
 pydub
+requests
