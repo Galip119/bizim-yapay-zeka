@@ -356,20 +356,48 @@ elif uygulama_modu == "Müzisyen Modu (DSP Motoru) 🎵":
                     
                     sarki_verisi = json.loads(json_str)
                     
-                    # NoModelsMusic kütüphanesi çağrılıyor (Aynı klasörde NoModelsMusic.py olmalı)
+                    # NoModelsMusic kütüphanesi çağrılıyor (Sesi WAV olarak üretir)
                     import NoModelsMusic
-                    ses_dosyasi = NoModelsMusic.motoru_calistir(sarki_verisi, hedef_dakika=hedef_dk)
+                    ses_dosyasi_wav = NoModelsMusic.motoru_calistir(sarki_verisi, hedef_dakika=hedef_dk)
                     
-                    st.audio(ses_dosyasi, format='audio/wav')
-                    st.success(f"🎵 {hedef_dk} Dakikalık Matematiksel Şarkı Hazır! (Tempo: {sarki_verisi.get('tempo', 120)} BPM)")
+                    # --- 🚀 WAV'I MP3'E ÇEVİRME İŞLEMİ ---
+                    from pydub import AudioSegment
+                    import io
                     
-                    st.download_button(
-                        label="💾 Şarkıyı İndir (.WAV)",
-                        data=ses_dosyasi,
-                        file_name="NoModelsMusic_Sentez.wav",
-                        mime="audio/wav",
-                        use_container_width=True
-                    )
+                    # Hafızadaki WAV verisini okuyoruz
+                    wav_io = io.BytesIO(ses_dosyasi_wav)
+                    ses_segmenti = AudioSegment.from_wav(wav_io)
+                    
+                    # MP3 olarak yeni bir hafıza alanına 192k kalitesinde yazıyoruz
+                    mp3_io = io.BytesIO()
+                    ses_segmenti.export(mp3_io, format="mp3", bitrate="192k")
+                    ses_dosyasi_mp3 = mp3_io.getvalue()
+                    # ----------------------------------
+                    
+                    # Ekranda MP3 çalsın (Tarayıcılar MP3'ü daha hızlı yükler)
+                    st.audio(ses_dosyasi_mp3, format='audio/mp3')
+                    st.success(f"🎵 {hedef_dk} Dakikalık Şarkı Hazır! (Tempo: {sarki_verisi.get('tempo', 120)} BPM)")
+                    
+                    # --- YAN YANA İKİ İNDİRME BUTONU ---
+                    col_ind1, col_ind2 = st.columns(2)
+                    
+                    with col_ind1:
+                        st.download_button(
+                            label="💾 .WAV İndir (Kayıpsız / Orijinal)",
+                            data=ses_dosyasi_wav,
+                            file_name="NoModelsMusic_Orijinal.wav",
+                            mime="audio/wav",
+                            use_container_width=True
+                        )
+                        
+                    with col_ind2:
+                        st.download_button(
+                            label="💾 .MP3 İndir (Hafif Boyut / Paylaşımlık)",
+                            data=ses_dosyasi_mp3,
+                            file_name="NoModelsMusic_Sikistirilmis.mp3",
+                            mime="audio/mp3",
+                            use_container_width=True
+                        )
                     
                     with st.expander("🛠️ Kullanılan Kanallar ve Notalar (JSON Gösterimi)"): 
                         st.json(sarki_verisi)
@@ -377,7 +405,10 @@ elif uygulama_modu == "Müzisyen Modu (DSP Motoru) 🎵":
                     st.error("Yapay Zeka API bağlantısı sağlanamadı. Sunucular dolu olabilir.")
             except json.JSONDecodeError: 
                 st.error("Yapay zeka notaları dizerken JSON formatında syntax hatası yaptı. Lütfen butona tekrar basın.")
-            except ImportError:
-                st.error("Kritik Hata: 'NoModelsMusic.py' dosyası ana dizinde bulunamadı! Lütfen DSP motoru dosyasının app.py ile aynı klasörde olduğundan emin ol.")
+            except ImportError as e:
+                if "pydub" in str(e):
+                    st.error("Kritik Hata: 'pydub' kütüphanesi eksik! Lütfen requirements.txt dosyasına 'pydub' ekleyin.")
+                else:
+                    st.error("Kritik Hata: 'NoModelsMusic.py' dosyası ana dizinde bulunamadı! Lütfen DSP motoru dosyasının app.py ile aynı klasörde olduğundan emin ol.")
             except Exception as e: 
                 st.error(f"Sistem Hatası: {e}")
