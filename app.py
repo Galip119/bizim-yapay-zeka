@@ -1,3 +1,12 @@
+# app.py dosyasının en tepesine ekle
+import sys
+# Dosyaların aynı klasörde olduğunu garantiye al
+sys.path.append(os.path.dirname(os.path.abspath(__file__))) 
+import NoModelsMusic
+
+# Müzisyen Modu içinde motoru çağırırken:
+# Hata almamak için doğrudan fonksiyonu çağırıyoruz
+ses_wav = NoModelsMusic.motoru_calistir(sarki_verisi, hedef_dakika=hedef_dk)
 import streamlit as st
 from openai import OpenAI
 from tavily import TavilyClient
