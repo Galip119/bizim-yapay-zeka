@@ -177,8 +177,9 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                             for sayfa in pdf.pages
                             if sayfa.extract_text()
                         ]
-                  
-                        elif dosya_adi.endswith(".docx"):
+                    )
+
+                elif dosya_adi.endswith(".docx"):
                     doc = Document(yuklenen_dosya)
                     icerik = "\n".join(
                         [p.text for p in doc.paragraphs]
@@ -318,6 +319,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
 
                 except:
                     pass
+
 # ==========================================
 # 3. MOD: SESLİ YANIT
 # ==========================================
@@ -403,7 +405,7 @@ Sadece JSON yaz.
 Tüm diziler 16 elemanlı olmalıdır.
 Notalar C1 ile B7 arasında olmalıdır.
 """
-[22.06 20:32] Annem: basarili = False
+                basarili = False
 
                 for model_id in [secilen_model_id] + [
                     m for m in MODELS.values()
