@@ -58,7 +58,7 @@ if st.sidebar.button("🧹 Sohbet Geçmişini Temizle"):
 st.title("Eymen-GPT 🚀")
 
 # ==========================================
-# 1. MOD: SOHBET VE ANALİZ
+# 1. MOD: SOHBET VE ANALİZ (HATASIZ DOSYA BELLEĞİ)
 # ==========================================
 if uygulama_modu == "Sohbet & Analiz 💬":
     for mesaj in st.session_state.mesaj_gecmisi:
@@ -73,10 +73,13 @@ if uygulama_modu == "Sohbet & Analiz 💬":
     with col2:
         yuklenen_dosya = st.file_uploader("Dosya Analizi", type=["txt", "pdf", "docx", "xlsx", "py", "html", "htm", "json", "xml", "png", "jpg", "jpeg"], label_visibility="collapsed", key=dosya_anahtari)
 
-    dosya_icerigi = ""
+    # Dosyayı hafızada tutmak için sistem
+    if "dosya_bellegi" not in st.session_state:
+        st.session_state.dosya_bellegi = ""
 
     if yuklenen_dosya is not None:
         dosya_adi = yuklenen_dosya.name.lower()
+        dosya_icerigi = ""
         try:
             if dosya_adi.endswith((".txt", ".py")): dosya_icerigi = yuklenen_dosya.read().decode("utf-8")
             elif dosya_adi.endswith(".pdf"):
@@ -110,31 +113,46 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                     resim = Image.open(yuklenen_dosya)
                     dosya_icerigi = pytesseract.image_to_string(resim, lang="tur+eng")
                 except:
-                    st.warning("OCR sistemi tam çalışmadığı için yazı okunamadı.")
-            if dosya_icerigi: st.info(f"📎 {yuklenen_dosya.name} başarıyla okundu.")
+                    st.warning("OCR sistemi çalışmadığı için resimdeki yazı okunamadı.")
+            
+            if dosya_icerigi:
+                # İçeriği Streamlit'in hafızasına kazıyoruz
+                st.session_state.dosya_bellegi = dosya_icerigi
+                st.success(f"📎 {yuklenen_dosya.name} başarıyla hafızaya alındı!")
+                
+                # Kullanıcı soru yazmakla uğraşmasın diye direkt buton
+                if st.button("📄 Bu Dosyayı Analiz Et / Özetle"):
+                    sorgu = "Lütfen yüklediğim bu dosyayı detaylıca analiz et ve özetle."
+                    
         except Exception as e: st.error(f"Dosya okunurken hata oluştu: {e}")
+    else:
+        # Dosya çarpı işaretine basılıp silinirse hafızayı da temizle
+        st.session_state.dosya_bellegi = ""
 
-    if sorgu or dosya_icerigi:
-        if sorgu:
-            st.session_state.mesaj_gecmisi.append({"role": "user", "content": sorgu})
-            with st.chat_message("user"):
-                st.markdown(sorgu)
+    # Yapay zeka soruyu ve bellekteki dosyayı işliyor
+    if sorgu:
+        st.session_state.mesaj_gecmisi.append({"role": "user", "content": sorgu})
+        with st.chat_message("user"):
+            st.markdown(sorgu)
 
         with st.spinner("Eymen-GPT düşünüyor..."):
             try:
                 arama_metni = ""
-                if sorgu:
-                    try:
-                        search_result = tavily.search(query=sorgu, search_depth="basic")
-                        arama_metni = "\n".join([res["content"] for res in search_result["results"]])
-                    except: st.warning("İnternet araması yapılamadı.")
+                try:
+                    search_result = tavily.search(query=sorgu, search_depth="basic")
+                    arama_metni = "\n".join([res["content"] for res in search_result["results"]])
+                except: pass
                 
                 sistem_mesaji = "Sen çok gelişmiş bir Eymen-GPT asistanısın. Herhangi bir cevap vermeden önce, akıl yürütmeni MUTLAKA <dusunce> ve </dusunce> etiketleri arasına yaz. Düşünce kısmını bitirdikten sonra DIŞINA nihai cevabı yaz."
+                
                 kullanici_mesaji = ""
                 if arama_metni: kullanici_mesaji += f"--- İNTERNET ARAMASI ---\n{arama_metni}\n\n"
-                if dosya_icerigi: kullanici_mesaji += f"--- DOSYA İÇERİĞİ ---\n{dosya_icerigi[:35000]}\n\n"
-                if sorgu: kullanici_mesaji += f"Soru: {sorgu}"
-                else: kullanici_mesaji += "Soru: Lütfen yüklediğim bu dosyayı detaylıca analiz et ve özetle."
+                
+                # Hafızada dosya varsa prompt'a ekle
+                if st.session_state.dosya_bellegi: 
+                    kullanici_mesaji += f"--- DOSYA İÇERİĞİ ---\n{st.session_state.dosya_bellegi[:35000]}\n\n"
+                    
+                kullanici_mesaji += f"Soru: {sorgu}"
 
                 api_mesajlari = [{"role": "system", "content": sistem_mesaji}]
                 for msg in st.session_state.mesaj_gecmisi[:-1]:
