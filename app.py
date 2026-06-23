@@ -9,6 +9,7 @@ import os
 import numpy as np
 import scipy.io.wavfile as wav
 import scipy.signal as signal
+import subprocess
 from gtts import gTTS
 
 # --- DOSYA OKUMA KÜTÜPHANELERİ ---
@@ -28,7 +29,6 @@ class ColossusEngine:
         self.two_pi = 2 * np.pi
 
     def frekans_hesapla(self, nota_adi):
-        """ Notaları (C4, D#3 vb.) frekansa (Hz) çevirir """
         notalar = {"C": -9, "C#": -8, "D": -7, "D#": -6, "E": -5, "F": -4, 
                    "F#": -3, "G": -2, "G#": -1, "A": 0, "A#": 1, "B": 2}
         if not nota_adi or len(nota_adi) < 2 or nota_adi == "-": return 0.0
@@ -39,7 +39,6 @@ class ColossusEngine:
         return 440.0 * (2.0 ** (n / 12.0))
 
     def adsr_zarfi(self, uzunluk_sample, a=0.05, d=0.1, s=0.7, r=0.2):
-        """ Sesin zamanla sönümlenmesini sağlayan ADSR zarfı """
         a_len = int(uzunluk_sample * a)
         d_len = int(uzunluk_sample * d)
         r_len = int(uzunluk_sample * r)
@@ -53,7 +52,6 @@ class ColossusEngine:
         return np.concatenate([attack, decay, sustain, release])
 
     def sentezle(self, frekans, sure, dalga_tipi="sine"):
-        """ Temel dalga formlarını üretir """
         t = np.linspace(0, sure, int(self.sr * sure), endpoint=False)
         if frekans == 0.0: return np.zeros_like(t)
         
@@ -69,21 +67,20 @@ class ColossusEngine:
             dalga = np.sin(self.two_pi * frekans * t)
             
         zarf = self.adsr_zarfi(len(dalga))
-        return dalga * zarf * 0.5 # Ana ses seviyesini %50'de tut
+        return dalga * zarf * 0.5 
 
     def davul_üret(self, tip, sure):
-        """ Matematiksel davul (Kick, Snare, Hihat) modellemeleri """
         t = np.linspace(0, sure, int(self.sr * sure), endpoint=False)
-        zarf = np.exp(-t * 15) # Hızlı sönümleme
+        zarf = np.exp(-t * 15)
         
-        if tip == "K": # Kick (808 tarzı)
+        if tip == "K": 
             frekans_dususu = np.linspace(150, 40, len(t))
             ses = np.sin(self.two_pi * frekans_dususu * t) * zarf
-        elif tip == "S": # Snare
+        elif tip == "S": 
             noise = np.random.uniform(-1, 1, len(t))
             ton = np.sin(self.two_pi * 180 * t)
             ses = (noise * 0.7 + ton * 0.3) * np.exp(-t * 25)
-        elif tip == "H": # Hi-Hat
+        elif tip == "H": 
             noise = np.random.uniform(-1, 1, len(t))
             ses = noise * np.exp(-t * 40) * 0.5
         else:
@@ -91,14 +88,12 @@ class ColossusEngine:
         return ses
 
     def render(self, sarki_verisi, hedef_dakika=2):
-        """ JSON dizilimini sese çeviren ana render motoru """
         tempo = sarki_verisi.get("tempo", 120)
-        adim_suresi = (60.0 / tempo) / 4.0 # 16'lık nota süresi
+        adim_suresi = (60.0 / tempo) / 4.0 
         adim_sample = int(self.sr * adim_suresi)
         toplam_adim = 16
         dongu_sesi = np.zeros(adim_sample * toplam_adim)
         
-        # Sadece bilinen kanalları işle
         for kanal, notalar in sarki_verisi.items():
             if kanal == "tempo" or kanal == "global_fx": continue
             if not isinstance(notalar, list) or len(notalar) != 16: continue
@@ -107,12 +102,9 @@ class ColossusEngine:
             for i, v in enumerate(notalar):
                 if v == "-": continue
                 
-                # Vuruşun başlayacağı zamanı hesapla
                 baslangic = i * adim_sample
                 
-                # Kanal tipine göre ses üret (Davullar vs Melodiler)
                 if "kick" in kanal.lower() or "snare" in kanal.lower() or "hihat" in kanal.lower():
-                    # Harfleri davul tipine çevir
                     d_tip = "K" if "kick" in kanal.lower() else "S" if "snare" in kanal.lower() else "H"
                     parca = self.davul_üret(d_tip, adim_suresi * 2)
                 elif "bass" in kanal.lower():
@@ -121,11 +113,10 @@ class ColossusEngine:
                 elif "lead" in kanal.lower() or "pluck" in kanal.lower():
                     frekans = self.frekans_hesapla(v)
                     parca = self.sentezle(frekans, adim_suresi * 1.5, "square")
-                else: # Varsayılan (Piyano/Sine)
+                else: 
                     frekans = self.frekans_hesapla(v)
                     parca = self.sentezle(frekans, adim_suresi * 2, "sine")
                 
-                # Sesi kanala miksle (Taşmaları önleyerek)
                 bitis = baslangic + len(parca)
                 if bitis > len(kanal_sesi):
                     kanal_sesi[baslangic:] += parca[:len(kanal_sesi)-baslangic]
@@ -134,17 +125,15 @@ class ColossusEngine:
             
             dongu_sesi += kanal_sesi
 
-        # Döngüyü hedef dakikaya uzat
         hedef_saniye = int(hedef_dakika * 60)
         hedef_samples = hedef_saniye * self.sr
         tekrar_sayisi = int(np.ceil(hedef_samples / len(dongu_sesi)))
         
         master_ses = np.tile(dongu_sesi, tekrar_sayisi)[:hedef_samples]
         
-        # Clipping (Patlama) önleme
         max_val = np.max(np.abs(master_ses))
         if max_val > 0:
-            master_ses = master_ses / max_val * 0.9 # Normalize et
+            master_ses = master_ses / max_val * 0.9 
             
         master_ses = np.int16(master_ses * 32767)
         
@@ -323,11 +312,11 @@ elif uygulama_modu == "Sesli Yanıt 🗣️":
         st.download_button(label="💾 MP3 Olarak İndir", data=st.session_state.son_ses_bytes, file_name="eymen_ses.mp3", mime="audio/mp3", use_container_width=True)
 
 # ==========================================
-# 4. MOD: MÜZİSYEN MODU (TÜMLEŞİK SÜRÜM)
+# 4. MOD: MÜZİSYEN MODU (MP3 SÜRÜMÜ)
 # ==========================================
 elif uygulama_modu == "Müzisyen Modu 🎵":
-    st.markdown("### 🎵 Dahili DSP Müzik Stüdyosu")
-    st.write("Yapay zekanın yazdığı notalar, kodun içindeki matematiksel osilatörler kullanılarak anında sese dönüştürülür.")
+    st.markdown("### 🎵 Dahili DSP Müzik Stüdyosu (MP3)")
+    st.write("Yapay zekanın yazdığı notalar, kodun içindeki matematiksel osilatörler kullanılarak anında sese dönüştürülür ve MP3'e sıkıştırılır.")
     
     col_m1, col_m2 = st.columns([3, 1])
     with col_m1:
@@ -336,7 +325,7 @@ elif uygulama_modu == "Müzisyen Modu 🎵":
         hedef_dk = st.number_input("Süre (Dk)", min_value=0.5, max_value=10.0, value=2.0, step=0.5)
 
     if st.button("🎸 Müziği Üret", use_container_width=True) and muzik_sorgu:
-        with st.spinner(f"{hedef_dk} dakikalık şarkı sentezleniyor..."):
+        with st.spinner(f"{hedef_dk} dakikalık şarkı sentezleniyor ve MP3'e dönüştürülüyor..."):
             try:
                 # 1. Aşama: Yapay Zekadan Notaları Al
                 sistem_mesaji = """Sen müzisyen bir yapay zekasın. 16 adımlık bir JSON dizi iskeleti kur.
@@ -366,21 +355,36 @@ elif uygulama_modu == "Müzisyen Modu 🎵":
                     if m: json_str = m.group(0)
                     sarki_verisi = json.loads(json_str)
                     
-                    # 2. Aşama: Dahili Motoru Çalıştır (Dış dosya yok, doğrudan osilatörler devrede!)
+                    # 2. Aşama: Dahili Motoru Çalıştır
                     motor = ColossusEngine()
                     ses_dosyasi_wav = motor.render(sarki_verisi, hedef_dakika=hedef_dk)
                     
-                    # 3. Aşama: MP3 çevirisiyle uğraşmadan garantili WAV oynat
-                    st.audio(ses_dosyasi_wav, format='audio/wav')
-                    st.success("🎵 Şarkı Başarıyla Sentezlendi!")
-                    
-                    st.download_button(
-                        label="💾 Şarkıyı İndir (.WAV)",
-                        data=ses_dosyasi_wav,
-                        file_name="Eymen_Muzik_Sentez.wav",
-                        mime="audio/wav",
-                        use_container_width=True
-                    )
+                    # 3. Aşama: MP3 Çevirisi
+                    try:
+                        proc = subprocess.run(['ffmpeg', '-i', 'pipe:0', '-f', 'mp3', '-b:a', '192k', 'pipe:1'],
+                                              input=ses_dosyasi_wav, capture_output=True, check=True)
+                        ses_mp3 = proc.stdout
+                        
+                        st.audio(ses_mp3, format='audio/mp3')
+                        st.success("🎵 Şarkı Başarıyla Sentezlendi ve MP3 Formatına Sıkıştırıldı!")
+                        
+                        st.download_button(
+                            label="💾 Şarkıyı İndir (.MP3)",
+                            data=ses_mp3,
+                            file_name="Eymen_Muzik_Sentez.mp3",
+                            mime="audio/mp3",
+                            use_container_width=True
+                        )
+                    except Exception as mp3_hata:
+                        st.warning("MP3 dönüştürücü sunucuda yanıt vermedi. Orijinal kayıpsız WAV dosyası veriliyor.")
+                        st.audio(ses_dosyasi_wav, format='audio/wav')
+                        st.download_button(
+                            label="💾 Şarkıyı İndir (.WAV)",
+                            data=ses_dosyasi_wav,
+                            file_name="Eymen_Muzik_Sentez.wav",
+                            mime="audio/wav",
+                            use_container_width=True
+                        )
                     
                     with st.expander("🛠️ Kanallar (JSON)"): st.json(sarki_verisi)
                 else: st.error("Bağlantı hatası.")
