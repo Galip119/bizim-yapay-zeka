@@ -4,11 +4,14 @@ from tavily import TavilyClient
 import json
 import re
 import urllib.parse
-import os
 import io
+import os
+import numpy as np
+import scipy.io.wavfile as wav
+import scipy.signal as signal
 from gtts import gTTS
 
-# --- DOSYA OKUMA VE İŞLEME KÜTÜPHANELERİ ---
+# --- DOSYA OKUMA KÜTÜPHANELERİ ---
 from pypdf import PdfReader
 from docx import Document
 import openpyxl
@@ -17,73 +20,179 @@ from PIL import Image
 import pytesseract
 
 # =====================================================================
+# 🛠️ GÖMÜLÜ DEV DSP MÜZİK MOTORU (Sentezleyici ve Sequencer)
+# =====================================================================
+class ColossusEngine:
+    def __init__(self, sr=44100):
+        self.sr = sr
+        self.two_pi = 2 * np.pi
+
+    def frekans_hesapla(self, nota_adi):
+        """ Notaları (C4, D#3 vb.) frekansa (Hz) çevirir """
+        notalar = {"C": -9, "C#": -8, "D": -7, "D#": -6, "E": -5, "F": -4, 
+                   "F#": -3, "G": -2, "G#": -1, "A": 0, "A#": 1, "B": 2}
+        if not nota_adi or len(nota_adi) < 2 or nota_adi == "-": return 0.0
+        nota = nota_adi[:-1]
+        oktav = int(nota_adi[-1])
+        if nota not in notalar: return 0.0
+        n = notalar[nota] + (oktav - 4) * 12
+        return 440.0 * (2.0 ** (n / 12.0))
+
+    def adsr_zarfi(self, uzunluk_sample, a=0.05, d=0.1, s=0.7, r=0.2):
+        """ Sesin zamanla sönümlenmesini sağlayan ADSR zarfı """
+        a_len = int(uzunluk_sample * a)
+        d_len = int(uzunluk_sample * d)
+        r_len = int(uzunluk_sample * r)
+        s_len = uzunluk_sample - a_len - d_len - r_len
+        if s_len < 0: s_len = 0
+        
+        attack = np.linspace(0, 1, a_len)
+        decay = np.linspace(1, s, d_len)
+        sustain = np.ones(s_len) * s
+        release = np.linspace(s, 0, r_len)
+        return np.concatenate([attack, decay, sustain, release])
+
+    def sentezle(self, frekans, sure, dalga_tipi="sine"):
+        """ Temel dalga formlarını üretir """
+        t = np.linspace(0, sure, int(self.sr * sure), endpoint=False)
+        if frekans == 0.0: return np.zeros_like(t)
+        
+        if dalga_tipi == "sine":
+            dalga = np.sin(self.two_pi * frekans * t)
+        elif dalga_tipi == "square":
+            dalga = signal.square(self.two_pi * frekans * t)
+        elif dalga_tipi == "saw":
+            dalga = signal.sawtooth(self.two_pi * frekans * t)
+        elif dalga_tipi == "noise":
+            dalga = np.random.uniform(-1, 1, len(t))
+        else:
+            dalga = np.sin(self.two_pi * frekans * t)
+            
+        zarf = self.adsr_zarfi(len(dalga))
+        return dalga * zarf * 0.5 # Ana ses seviyesini %50'de tut
+
+    def davul_üret(self, tip, sure):
+        """ Matematiksel davul (Kick, Snare, Hihat) modellemeleri """
+        t = np.linspace(0, sure, int(self.sr * sure), endpoint=False)
+        zarf = np.exp(-t * 15) # Hızlı sönümleme
+        
+        if tip == "K": # Kick (808 tarzı)
+            frekans_dususu = np.linspace(150, 40, len(t))
+            ses = np.sin(self.two_pi * frekans_dususu * t) * zarf
+        elif tip == "S": # Snare
+            noise = np.random.uniform(-1, 1, len(t))
+            ton = np.sin(self.two_pi * 180 * t)
+            ses = (noise * 0.7 + ton * 0.3) * np.exp(-t * 25)
+        elif tip == "H": # Hi-Hat
+            noise = np.random.uniform(-1, 1, len(t))
+            ses = noise * np.exp(-t * 40) * 0.5
+        else:
+            ses = np.zeros_like(t)
+        return ses
+
+    def render(self, sarki_verisi, hedef_dakika=2):
+        """ JSON dizilimini sese çeviren ana render motoru """
+        tempo = sarki_verisi.get("tempo", 120)
+        adim_suresi = (60.0 / tempo) / 4.0 # 16'lık nota süresi
+        adim_sample = int(self.sr * adim_suresi)
+        toplam_adim = 16
+        dongu_sesi = np.zeros(adim_sample * toplam_adim)
+        
+        # Sadece bilinen kanalları işle
+        for kanal, notalar in sarki_verisi.items():
+            if kanal == "tempo" or kanal == "global_fx": continue
+            if not isinstance(notalar, list) or len(notalar) != 16: continue
+            
+            kanal_sesi = np.zeros(adim_sample * toplam_adim)
+            for i, v in enumerate(notalar):
+                if v == "-": continue
+                
+                # Vuruşun başlayacağı zamanı hesapla
+                baslangic = i * adim_sample
+                
+                # Kanal tipine göre ses üret (Davullar vs Melodiler)
+                if "kick" in kanal.lower() or "snare" in kanal.lower() or "hihat" in kanal.lower():
+                    # Harfleri davul tipine çevir
+                    d_tip = "K" if "kick" in kanal.lower() else "S" if "snare" in kanal.lower() else "H"
+                    parca = self.davul_üret(d_tip, adim_suresi * 2)
+                elif "bass" in kanal.lower():
+                    frekans = self.frekans_hesapla(v)
+                    parca = self.sentezle(frekans, adim_suresi * 2, "saw")
+                elif "lead" in kanal.lower() or "pluck" in kanal.lower():
+                    frekans = self.frekans_hesapla(v)
+                    parca = self.sentezle(frekans, adim_suresi * 1.5, "square")
+                else: # Varsayılan (Piyano/Sine)
+                    frekans = self.frekans_hesapla(v)
+                    parca = self.sentezle(frekans, adim_suresi * 2, "sine")
+                
+                # Sesi kanala miksle (Taşmaları önleyerek)
+                bitis = baslangic + len(parca)
+                if bitis > len(kanal_sesi):
+                    kanal_sesi[baslangic:] += parca[:len(kanal_sesi)-baslangic]
+                else:
+                    kanal_sesi[baslangic:bitis] += parca
+            
+            dongu_sesi += kanal_sesi
+
+        # Döngüyü hedef dakikaya uzat
+        hedef_saniye = int(hedef_dakika * 60)
+        hedef_samples = hedef_saniye * self.sr
+        tekrar_sayisi = int(np.ceil(hedef_samples / len(dongu_sesi)))
+        
+        master_ses = np.tile(dongu_sesi, tekrar_sayisi)[:hedef_samples]
+        
+        # Clipping (Patlama) önleme
+        max_val = np.max(np.abs(master_ses))
+        if max_val > 0:
+            master_ses = master_ses / max_val * 0.9 # Normalize et
+            
+        master_ses = np.int16(master_ses * 32767)
+        
+        byte_io = io.BytesIO()
+        wav.write(byte_io, self.sr, master_ses)
+        return byte_io.getvalue()
+
+# =====================================================================
 # EYMEN-GPT: ULTIMATE MEGA STUDIO & ASİSTAN ARAYÜZÜ
 # =====================================================================
+st.set_page_config(layout="wide", page_title="Eymen-GPT Ultimate", initial_sidebar_state="expanded")
 
-# Sayfa temel ayarları ve genişlik yapılandırması
-st.set_page_config(
-    layout="wide", 
-    page_title="Eymen-GPT Ultimate", 
-    page_icon="🚀",
-    initial_sidebar_state="expanded"
-)
-
-# --- 1. OTURUM HAFIZASI (SESSION STATE) YÖNETİMİ ---
-# Kullanıcının sohbet geçmişini, dosyalarını ve ürettiği medyaları kaybetmemesi için derin hafıza.
-if "form_num" not in st.session_state: st.session_state.form_num = 0
+# --- OTURUM HAFIZASI ---
 if "mesaj_gecmisi" not in st.session_state: st.session_state.mesaj_gecmisi = []
 if "dosya_bellegi" not in st.session_state: st.session_state.dosya_bellegi = ""
 if "resim_hazir" not in st.session_state: st.session_state.resim_hazir = False
 if "son_resim_url" not in st.session_state: st.session_state.son_resim_url = ""
 if "sesli_metin_hazir" not in st.session_state: st.session_state.sesli_metin_hazir = False
+if "son_ses_bytes" not in st.session_state: st.session_state.son_ses_bytes = None
 
-# Dinamik anahtarlar
-metin_anahtari = f"sorgu_{st.session_state.form_num}"
-dosya_anahtari = f"dosya_{st.session_state.form_num}"
-
-# --- 2. GİZLİ API ANAHTARLARI VE SERVİS BAĞLANTILARI ---
+# --- API ANAHTARLARI ---
 try:
     github_token = st.secrets["GITHUB_TOKEN"]
     tavily_key = st.secrets["TAVILY_API_KEY"]
-except Exception as e:
-    st.error("API Anahtarları bulunamadı. Lütfen Streamlit secrets ayarlarını kontrol edin.")
+except:
+    st.error("❌ API anahtarları bulunamadı!")
     st.stop()
 
 client = OpenAI(base_url="https://models.inference.ai.azure.com", api_key=github_token)
 tavily = TavilyClient(api_key=tavily_key)
 
-# --- 3. DESTEKLENEN YAPAY ZEKA MODELLERİ ---
 MODELS = {
-    "Mistral-8x7B (Hızlı)": "Mistral-8x7B",
-    "GPT-4o Mini (Dengeli)": "gpt-4o-mini",
-    "Llama-3.1-70B (Güçlü)": "meta-llama-3.1-70b-instruct",
-    "Cohere Command R (Araştırmacı)": "cohere-command-r",
-    "GPT-4o (En Zeki)": "gpt-4o"
+    "Mistral-8x7B": "Mistral-8x7B",
+    "GPT-4o Mini": "gpt-4o-mini",
+    "Llama-3.1-70B": "meta-llama-3.1-70b-instruct",
+    "Cohere Command R": "cohere-command-r",
+    "GPT-4o": "gpt-4o"
 }
 
-# --- 4. YAN MENÜ (SIDEBAR) TASARIMI ---
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/1183/1183140.png", width=100)
-st.sidebar.title("⚙️ Sistem Kontrol Paneli")
-st.sidebar.markdown("Eymen-GPT Ultimate Engine'e Hoş Geldin.")
-
-uygulama_modu = st.sidebar.radio(
-    "Aktif Modu Seçin:", 
-    [
-        "Sohbet & Veri Analizi 💬", 
-        "Ressam Modu (Görsel Üretim) 🎨", 
-        "Sesli Yanıt (Text-to-Speech) 🗣️", 
-        "Müzisyen Modu (DSP Motoru) 🎵"
-    ]
-)
+# --- YAN MENÜ ---
+st.sidebar.title("⚙️ Sistem Ayarları")
+uygulama_modu = st.sidebar.radio("Mod Seçimi:", ["Sohbet & Analiz 💬", "Ressam Modu 🎨", "Sesli Yanıt 🗣️", "Müzisyen Modu 🎵"])
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🧠 Model Ayarları")
-st.sidebar.write("Kotası dolan modelden otomatik olarak yedek modellere geçiş yapılır. Çökme riski sıfırdır.")
-secilen_model_adi = st.sidebar.selectbox("Birincil Yapay Zeka Modelini Seçin:", list(MODELS.keys()))
+secilen_model_adi = st.sidebar.selectbox("Bir Model Seçin:", list(MODELS.keys()))
 secilen_model_id = MODELS[secilen_model_adi]
 
-st.sidebar.markdown("---")
-if st.sidebar.button("🧹 Tüm Sistem Hafızasını Temizle", use_container_width=True):
+if st.sidebar.button("🧹 Sistemi Temizle", use_container_width=True):
     st.session_state.mesaj_gecmisi = []
     st.session_state.dosya_bellegi = ""
     st.session_state.resim_hazir = False
@@ -91,34 +200,25 @@ if st.sidebar.button("🧹 Tüm Sistem Hafızasını Temizle", use_container_wid
     st.rerun()
 
 st.title("Eymen-GPT Ultimate 🚀")
-st.markdown("Güçlendirilmiş Çoklu Zeka, Sinyal İşleme ve Analiz Platformu")
 
-# =====================================================================
-# MOD 1: SOHBET, BELGE OKUMA VE İNTERNET ARAMASI
-# =====================================================================
-if uygulama_modu == "Sohbet & Veri Analizi 💬":
-    st.info("İstediğin dosyayı yükleyebilir, analiz ettirebilir veya doğrudan internete bağlı şekilde sorular sorabilirsin.")
-    
-    # Gelişmiş Dosya Yükleyici
-    yuklenen_dosya = st.file_uploader("Analiz Edilecek Dosyayı Yükle (İsteğe Bağlı)", type=["txt", "pdf", "docx", "xlsx", "py", "html", "htm", "json", "xml", "png", "jpg", "jpeg"])
+# ==========================================
+# 1. MOD: SOHBET VE ANALİZ
+# ==========================================
+if uygulama_modu == "Sohbet & Analiz 💬":
+    yuklenen_dosya = st.file_uploader("Dosya Yükle", type=["txt", "pdf", "docx", "xlsx", "py", "html", "htm", "json", "xml", "png", "jpg", "jpeg"])
 
     if yuklenen_dosya is not None:
         dosya_adi = yuklenen_dosya.name.lower()
         icerik = ""
-        with st.spinner(f"{yuklenen_dosya.name} işleniyor, veriler çıkartılıyor..."):
+        with st.spinner("Dosya işleniyor..."):
             try:
-                # Metin ve Kod Dosyaları
-                if dosya_adi.endswith((".txt", ".py", ".xml")): 
-                    icerik = yuklenen_dosya.read().decode("utf-8")
-                # PDF Dosyaları
+                if dosya_adi.endswith((".txt", ".py", ".xml")): icerik = yuklenen_dosya.read().decode("utf-8")
                 elif dosya_adi.endswith(".pdf"):
-                    pdf_okuyucu = PdfReader(yuklenen_dosya)
-                    icerik = "\n".join([sayfa.extract_text() for sayfa in pdf_okuyucu.pages if sayfa.extract_text()])
-                # Word Dosyaları
+                    pdf = PdfReader(yuklenen_dosya)
+                    icerik = "\n".join([sayfa.extract_text() for sayfa in pdf.pages if sayfa.extract_text()])
                 elif dosya_adi.endswith(".docx"):
                     doc = Document(yuklenen_dosya)
                     icerik = "\n".join([p.text for p in doc.paragraphs])
-                # Excel Dosyaları
                 elif dosya_adi.endswith(".xlsx"):
                     wb = openpyxl.load_workbook(yuklenen_dosya, data_only=True)
                     satirlar = []
@@ -126,258 +226,162 @@ if uygulama_modu == "Sohbet & Veri Analizi 💬":
                         ws = wb[sayfa]
                         satirlar.append(f"--- Sayfa: {sayfa} ---")
                         for satir in ws.iter_rows(values_only=True):
-                            satir_filtreli = [str(hucre) for hucre in satir if hucre is not None]
-                            if satir_filtreli: satirlar.append(" | ".join(satir_filtreli))
+                            hucreler = [str(hucre) for hucre in satir if hucre is not None]
+                            if hucreler: satirlar.append(" | ".join(hucreler))
                     icerik = "\n".join(satirlar)
-                # HTML Sayfaları
                 elif dosya_adi.endswith((".html", ".htm")):
                     soup = BeautifulSoup(yuklenen_dosya.read().decode("utf-8"), "html.parser")
                     icerik = soup.get_text(separator="\n", strip=True)
-                # JSON Verileri
                 elif dosya_adi.endswith(".json"):
                     icerik = json.dumps(json.load(yuklenen_dosya), indent=2, ensure_ascii=False)
-                # Görsel ve OCR (Optik Karakter Tanıma)
                 elif dosya_adi.endswith((".png", ".jpg", ".jpeg")):
-                    st.image(yuklenen_dosya, caption="Sisteme Yüklenen Görsel", width=300)
-                    try: 
-                        icerik = pytesseract.image_to_string(Image.open(yuklenen_dosya), lang="tur+eng")
-                    except: 
-                        st.warning("OCR okuyamadı. Tesseract yüklü olmayabilir.")
+                    st.image(yuklenen_dosya, width=300)
+                    try: icerik = pytesseract.image_to_string(Image.open(yuklenen_dosya), lang="tur+eng")
+                    except: st.warning("OCR çalışmadı.")
                 
                 if icerik:
                     st.session_state.dosya_bellegi = icerik
-                    st.success(f"📎 {yuklenen_dosya.name} başarıyla veri tabanına alındı! Artık bu dosya hakkında sorular sorabilirsin.")
-            except Exception as e: 
-                st.error(f"Kritik Dosya Okuma Hatası: {e}")
-    else:
-        st.session_state.dosya_bellegi = ""
+                    st.success(f"📎 {yuklenen_dosya.name} hafızaya alındı!")
+            except Exception as e: st.error(f"Hata: {e}")
 
-    # Ekrandaki Sohbet Geçmişini Render Etme
     for mesaj in st.session_state.mesaj_gecmisi:
-        with st.chat_message(mesaj["role"]):
-            st.markdown(mesaj["content"])
+        with st.chat_message(mesaj["role"]): st.markdown(mesaj["content"])
 
-    # Standart Sohbet Girdisi
-    if sorgu := st.chat_input("Eymen-GPT'ye bir soru sor veya dosya hakkında komut ver..."):
-        
+    if sorgu := st.chat_input("Sorunu yaz..."):
         st.session_state.mesaj_gecmisi.append({"role": "user", "content": sorgu})
-        with st.chat_message("user"): 
-            st.markdown(sorgu)
+        with st.chat_message("user"): st.markdown(sorgu)
 
-        with st.spinner("Ağlar taranıyor, düşünce zinciri oluşturuluyor..."):
+        with st.spinner("Düşünüyor..."):
             try:
                 arama_metni = ""
                 try:
-                    # Tavily ile Canlı İnternet Taraması
                     res = tavily.search(query=sorgu, search_depth="basic")
                     arama_metni = "\n".join([r["content"] for r in res["results"]])
-                except: 
-                    pass # İnternet araması başarısız olursa normal zekayla devam et
+                except: pass
                 
-                sistem_mesaji = "Sen Eymen-GPT'sin. Çok zeki, mühendislik ve analiz yetenekleri üst düzey bir asistansın. Akıl yürütmeni <dusunce> etiketi içine detaylıca yaz, düşünce işlemi bittikten sonra etiket dışına nihai ve net cevabını yaz."
-                k_msg = f"Soru/Komut: {sorgu}\n"
-                
-                # Yapay zekaya aktarılacak bağlamlar
-                if arama_metni: 
-                    k_msg += f"\n--- CANLI İNTERNET VERİSİ ---\n{arama_metni}\n"
-                if st.session_state.dosya_bellegi: 
-                    k_msg += f"\n--- KULLANICI DOSYA İÇERİĞİ ---\n{st.session_state.dosya_bellegi[:30000]}\n"
+                sistem_mesaji = "Sen Eymen-GPT'sin. Akıl yürütmeni <dusunce> etiketi içine yaz, sonra cevabı ver."
+                k_msg = f"Soru: {sorgu}\n"
+                if arama_metni: k_msg += f"İNTERNET: {arama_metni}\n"
+                if st.session_state.dosya_bellegi: k_msg += f"DOSYA: {st.session_state.dosya_bellegi[:30000]}\n"
 
                 msgs = [{"role": "system", "content": sistem_mesaji}] + st.session_state.mesaj_gecmisi[:-1] + [{"role": "user", "content": k_msg}]
 
                 basarili = False
-                yedek_modeller = [secilen_model_id] + [m for m in MODELS.values() if m != secilen_model_id]
-                
-                # Çökme Korumalı Model Yönlendirmesi
-                for model_id in yedek_modeller:
+                for model_id in [secilen_model_id] + [m for m in MODELS.values() if m != secilen_model_id]:
                     try:
-                        response = client.chat.completions.create(
-                            messages=msgs, 
-                            model=model_id, 
-                            temperature=0.6,
-                            max_tokens=4000
-                        )
+                        response = client.chat.completions.create(messages=msgs, model=model_id, temperature=0.6)
                         basarili = True
                         break
-                    except Exception as e: 
-                        continue
+                    except: continue
 
                 if basarili:
                     cevap = response.choices[0].message.content
                     d_blog = ""
-                    
-                    # Düşünce zincirini regex ile ayıkla
                     m = re.search(r'<(?:dusunce|düşünce|thinking)>(.*?)</(?:dusunce|düşünce|thinking)>', cevap, re.DOTALL | re.IGNORECASE)
                     if m:
                         d_blog = m.group(1).strip()
                         cevap = re.sub(r'<(?:dusunce|düşünce|thinking)>.*?</(?:dusunce|düşünce|thinking)>', '', cevap, flags=re.DOTALL | re.IGNORECASE).strip()
 
                     st.session_state.mesaj_gecmisi.append({"role": "assistant", "content": cevap})
-                    
                     with st.chat_message("assistant"):
                         if d_blog:
-                            with st.expander("🧠 Eymen-GPT'nin Düşünce Adımları (Zincir)"): 
-                                st.write(d_blog)
+                            with st.expander("Düşünce Adımları"): st.write(d_blog)
                         st.markdown(cevap)
-                else: 
-                    st.error("Sunuculardaki tüm modellerin kotası dolu veya bağlantı kurulamıyor.")
-            except Exception as e: 
-                st.error(f"Cevap üretilirken kritik sistem hatası: {e}")
+                else: st.error("Modeller çöktü.")
+            except Exception as e: st.error(f"Hata: {e}")
 
-# =====================================================================
-# MOD 2: RESSAM MODU (GÖRSEL ÜRETİM)
-# =====================================================================
-elif uygulama_modu == "Ressam Modu (Görsel Üretim) 🎨":
-    st.markdown("### 🎨 Dijital Tuval: Hayal Gücünü Ekrana Yansıt")
-    st.write("Yapay zeka motoru, verdiğin detaylı metinsel tasviri yüksek çözünürlüklü bir sanat eserine çevirir.")
-    
-    resim_sorgu = st.text_area("Çizilmesini istediğin sahneyi detaylıca tarif et:", height=100, placeholder="Örn: Neon ışıklı siberpunk bir şehirde, elinde kılıç tutan robotik bir savaşçı, sinematik ışıklandırma, 8k çözünürlük...")
-    
-    col_btn1, col_btn2 = st.columns([1, 4])
-    with col_btn1:
-        cizdir_butonu = st.button("🖼️ Görseli Sentezle", use_container_width=True)
-    
-    if cizdir_butonu and resim_sorgu:
-        with st.spinner("Görsel motoru çalıştırılıyor, pikseller hesaplanıyor..."):
-            guvenli_sorgu = urllib.parse.quote(resim_sorgu)
-            st.session_state.son_resim_url = f"https://image.pollinations.ai/prompt/{guvenli_sorgu}?width=1024&height=1024&nologo=true"
+# ==========================================
+# 2. MOD: RESSAM MODU
+# ==========================================
+elif uygulama_modu == "Ressam Modu 🎨":
+    resim_sorgu = st.text_input("Neyin resmini çizmek istersin?")
+    if st.button("Resmi Oluştur", use_container_width=True) and resim_sorgu:
+        with st.spinner("Çiziliyor..."):
+            st.session_state.son_resim_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(resim_sorgu)}?width=1024&height=1024&nologo=true"
             st.session_state.resim_hazir = True
-            
-    if st.session_state.resim_hazir and st.session_state.son_resim_url:
-        st.image(st.session_state.son_resim_url, caption=f"Prompt: {resim_sorgu}", use_container_width=True)
-        st.success("Görsel başarıyla oluşturuldu! Resmi sağ tıklayıp veya basılı tutup cihazınıza kaydedebilirsiniz.")
+    if st.session_state.resim_hazir:
+        st.image(st.session_state.son_resim_url, use_container_width=True)
 
-# =====================================================================
-# MOD 3: SESLİ YANIT VE METİN OKUMA (TEXT-TO-SPEECH)
-# =====================================================================
-elif uygulama_modu == "Sesli Yanıt (Text-to-Speech) 🗣️":
-    st.markdown("### 🗣️ Sesli Asistan ve Metin Okuyucu")
-    st.write("İstediğin herhangi bir uzun metni veya soruyu buraya yaz, sistem sana bunu sesli bir şekilde okusun ve indirilebilir bir MP3 dosyası olarak versin.")
-    
-    sesli_sorgu = st.text_area("Seslendirilmesini istediğiniz metni girin:", height=150, placeholder="Örn: Merhaba, ben Eymen-GPT. Bugün size yıldızların nasıl oluştuğunu anlatacağım...")
-    
-    col_ses1, col_ses2 = st.columns([1, 4])
-    with col_ses1:
-        seslendir_butonu = st.button("🎙️ Sese Çevir", use_container_width=True)
-    
-    if seslendir_butonu and sesli_sorgu:
-        with st.spinner("Metin analiz ediliyor, akustik dalgalar (MP3) oluşturuluyor..."):
+# ==========================================
+# 3. MOD: SESLİ YANIT
+# ==========================================
+elif uygulama_modu == "Sesli Yanıt 🗣️":
+    sesli_sorgu = st.text_area("Seslendirilecek metni girin:", height=150)
+    if st.button("🎙️ Sese Çevir", use_container_width=True) and sesli_sorgu:
+        with st.spinner("Ses oluşturuluyor..."):
             try:
-                # gTTS (Google Text-to-Speech) kütüphanesi ile sesi oluştur
                 tts = gTTS(text=sesli_sorgu, lang='tr', slow=False)
-                
-                # Sesi geçici bir bellek tamponuna (BytesIO) kaydet ki diski yormasın
                 ses_bellek = io.BytesIO()
                 tts.write_to_fp(ses_bellek)
                 ses_bellek.seek(0)
-                
                 st.session_state.son_ses_bytes = ses_bellek.getvalue()
                 st.session_state.sesli_metin_hazir = True
-                st.success("Ses sentezleme işlemi başarıyla tamamlandı!")
-                
-            except Exception as e:
-                st.error(f"Ses sentezleme motorunda bir hata oluştu: {e}")
-                
-    if st.session_state.sesli_metin_hazir and st.session_state.son_ses_bytes:
-        st.markdown("#### 🎧 Dinle ve İndir")
+            except Exception as e: st.error(f"Hata: {e}")
+            
+    if st.session_state.sesli_metin_hazir:
         st.audio(st.session_state.son_ses_bytes, format='audio/mp3')
-        
-        # Ekstra: Direkt indirme butonu
-        st.download_button(
-            label="💾 MP3 Olarak Cihaza İndir",
-            data=st.session_state.son_ses_bytes,
-            file_name="eymen_gpt_sesli_yanit.mp3",
-            mime="audio/mp3",
-            use_container_width=True
-        )
+        st.download_button(label="💾 MP3 Olarak İndir", data=st.session_state.son_ses_bytes, file_name="eymen_ses.mp3", mime="audio/mp3", use_container_width=True)
 
-# =====================================================================
-# MOD 4: MÜZİSYEN MODU (NOMODELSMUSIC DEV DSP ENGINE)
-# =====================================================================
-elif uygulama_modu == "Müzisyen Modu (DSP Motoru) 🎵":
-    st.markdown("### 🎵 NoModelsMusic Dev Stüdyo")
-    st.write("Yapay zeka sadece notaları yazar, yerli üretim matematiksel DSP motorumuz ise sıfırdan MP3/WAV kalitesinde sesi oluşturur.")
+# ==========================================
+# 4. MOD: MÜZİSYEN MODU (TÜMLEŞİK SÜRÜM)
+# ==========================================
+elif uygulama_modu == "Müzisyen Modu 🎵":
+    st.markdown("### 🎵 Dahili DSP Müzik Stüdyosu")
+    st.write("Yapay zekanın yazdığı notalar, kodun içindeki matematiksel osilatörler kullanılarak anında sese dönüştürülür.")
     
     col_m1, col_m2 = st.columns([3, 1])
     with col_m1:
-        muzik_sorgu = st.text_input("Şarkıyı detaylıca tarif et:", placeholder="Örn: 80s synthwave, hareketli bir bas ve arp lead, yağmur efektli...")
+        muzik_sorgu = st.text_input("Şarkıyı tarif et:", placeholder="Örn: 80s synthwave, 120 bpm, hareketli bas ve davul...")
     with col_m2:
-        hedef_dk = st.number_input("Şarkı Süresi (Dk)", min_value=0.5, max_value=10.0, value=2.0, step=0.5)
+        hedef_dk = st.number_input("Süre (Dk)", min_value=0.5, max_value=10.0, value=2.0, step=0.5)
 
-    if st.button("🎸 Müziği Üret ve Render Al", use_container_width=True) and muzik_sorgu:
-        with st.spinner(f"Eymen-GPT orkestrasyonu kuruyor, NoModelsMusic {hedef_dk} dakikalık şarkıyı matematiksel olarak render ediyor..."):
+    if st.button("🎸 Müziği Üret", use_container_width=True) and muzik_sorgu:
+        with st.spinner(f"{hedef_dk} dakikalık şarkı sentezleniyor..."):
             try:
-                sistem_mesaji = """Sen efsanevi bir prodüktörsün. Kullanıcının hissine göre 16 adımlık DEV BİR MÜZİK İSKELETİ kur.
-                SADECE GEÇERLİ JSON YAZ. Başka tek kelime etme.
-                
-                Kullanabileceğin Kanallar (Enstrümanlar):
-                - Davullar: "kick_808", "kick_909", "kick_aco", "kick_pnc", "kick_lof", "kick_tec", "kick_dep", "snare_aco", "snare_ele", "snare_808", "snare_trp", "clap_bsc", "clap_rvb", "rimshot", "hihat_cl", "hihat_op", "cym_cr", "cym_rd", "tom_hi", "tom_lo", "bongo", "cowbell", "shaker", "claves"
-                - Doğa/Oyun FX: "fx_wind", "fx_rain", "fx_ocean", "fx_thunder", "fx_fire", "fx_laser", "fx_explosion", "fx_jump", "fx_coin", "fx_helicopter", "fx_ufo", "fx_bird", "fx_dog", "fx_cricket", "fx_frog"
-                - Bas (C1-B3): "bass_sub", "bass_808", "bass_slap", "bass_syn", "bass_res", "bass_acd", "bass_fm", "bass_wob", "bass_mog", "bass_frt"
-                - Tuşlular (C3-B5): "piano_grd", "piano_rhd", "piano_dx7", "organ_ham", "organ_chu", "clavinet"
-                - Gitar/Yaylı (C3-B6): "guit_aco", "guit_nyl", "guit_ovd", "guit_fuz", "harp", "str_syn", "violin", "cello"
-                - Üflemeli (C4-B6): "flute", "trumpet", "brass", "sax", "pan_flu"
-                - Lead/Pad/Pluck (C3-B7): "lead_saw", "lead_sqr", "lead_hvr", "lead_spr", "pad_wrm", "pad_cho", "pluck_sin", "pluck_fm", "arp_8bt"
-                
-                (Not: İstersen yukarıdaki kanalların sonuna "_2" ekleyerek alternatif varyasyonlarını da kullanabilirsin. Örn: "kick_808_2")
-
+                # 1. Aşama: Yapay Zekadan Notaları Al
+                sistem_mesaji = """Sen müzisyen bir yapay zekasın. 16 adımlık bir JSON dizi iskeleti kur.
+                Davul vurmak için K, S, H harflerini, notalar için C3, D#4 gibi değerleri kullan.
                 Örnek Format:
                 {
                     "tempo": 128,
-                    "global_fx": ["chorus", "reverb", "flanger", "phaser", "compressor"],
-                    "kick_808_2": ["K","-","K","-","K","-","K","-","K","-","K","-","K","-","K","-"],
-                    "bass_res": ["C2","-","-","-","E2","-","-","-","G2","-","-","-","C2","-","-","-"],
-                    "piano_grd": ["C4","-","-","-","E4","-","-","-","G4","-","-","-","C4","-","-","-"],
-                    "fx_rain": ["E","-","-","-","-","-","-","-","-","-","-","-","-","-","-","-"]
+                    "kick_808": ["K","-","K","-","K","-","K","-","K","-","K","-","K","-","K","-"],
+                    "bass_syn": ["C2","-","-","-","E2","-","-","-","G2","-","-","-","C2","-","-","-"]
                 }
-                Tüm array dizileri KESİNLİKLE 16 elemanlı olmalı. Davullar ve Efektler için K, S, E vb. Notalar için C1-B7 arası kullan.
-                """
+                Sadece geçerli JSON yaz."""
                 
                 basarili = False
-                yedek_modeller = [secilen_model_id] + [m for m in MODELS.values() if m != secilen_model_id]
-                
-                for model_id in yedek_modeller:
+                for model_id in [secilen_model_id] + [m for m in MODELS.values() if m != secilen_model_id]:
                     try:
                         response = client.chat.completions.create(
                             messages=[{"role": "system", "content": sistem_mesaji}, {"role": "user", "content": muzik_sorgu}],
-                            model=model_id, 
-                            temperature=0.7
+                            model=model_id, temperature=0.7
                         )
                         basarili = True
                         break
-                    except: 
-                        continue
+                    except: continue
 
                 if basarili:
                     json_str = response.choices[0].message.content.strip()
-                    # JSON'ı temizle
                     m = re.search(r'\{.*\}', json_str, re.DOTALL)
                     if m: json_str = m.group(0)
-                    
                     sarki_verisi = json.loads(json_str)
                     
-                    # NoModelsMusic kütüphanesi çağrılıyor (Aynı klasörde NoModelsMusic.py olmalı)
-                    import NoModelsMusic
-                    ses_dosyasi = NoModelsMusic.motoru_calistir(sarki_verisi, hedef_dakika=hedef_dk)
+                    # 2. Aşama: Dahili Motoru Çalıştır (Dış dosya yok, doğrudan osilatörler devrede!)
+                    motor = ColossusEngine()
+                    ses_dosyasi_wav = motor.render(sarki_verisi, hedef_dakika=hedef_dk)
                     
-                    st.audio(ses_dosyasi, format='audio/wav')
-                    st.success(f"🎵 {hedef_dk} Dakikalık Matematiksel Şarkı Hazır! (Tempo: {sarki_verisi.get('tempo', 120)} BPM)")
+                    # 3. Aşama: MP3 çevirisiyle uğraşmadan garantili WAV oynat
+                    st.audio(ses_dosyasi_wav, format='audio/wav')
+                    st.success("🎵 Şarkı Başarıyla Sentezlendi!")
                     
                     st.download_button(
                         label="💾 Şarkıyı İndir (.WAV)",
-                        data=ses_dosyasi,
-                        file_name="NoModelsMusic_Sentez.wav",
+                        data=ses_dosyasi_wav,
+                        file_name="Eymen_Muzik_Sentez.wav",
                         mime="audio/wav",
                         use_container_width=True
                     )
                     
-                    with st.expander("🛠️ Kullanılan Kanallar ve Notalar (JSON Gösterimi)"): 
-                        st.json(sarki_verisi)
-                else:
-                    st.error("Yapay Zeka API bağlantısı sağlanamadı. Sunucular dolu olabilir.")
-            except json.JSONDecodeError: 
-                st.error("Yapay zeka notaları dizerken JSON formatında syntax hatası yaptı. Lütfen butona tekrar basın.")
-            except ImportError:
-                st.error("Kritik Hata: 'NoModelsMusic.py' dosyası ana dizinde bulunamadı! Lütfen DSP motoru dosyasının app.py ile aynı klasörde olduğundan emin ol.")
-            except Exception as e: 
-                st.error(f"Sistem Hatası: {e}")
+                    with st.expander("🛠️ Kanallar (JSON)"): st.json(sarki_verisi)
+                else: st.error("Bağlantı hatası.")
+            except Exception as e: st.error(f"Hata: {e}")
