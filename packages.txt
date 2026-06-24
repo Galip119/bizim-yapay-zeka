@@ -4,3 +4,4 @@ ffmpeg
 lame
 Libsndfile1-dev
 tesseract-ocr-dev
+Apt-get
