@@ -339,7 +339,7 @@ with st.sidebar:
     st.caption(f"Sistem Durumu: Çevrimiçi")
 
 # Ana Başlık
-st.markdown("<h1 class='main-title'>Ultimate Mega Studio 🚀</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>Eymen-Gpt (Eymen Nexus-Core) 🚀</h1>", unsafe_allow_html=True)
 
 # =====================================================================
 # MOD 1: SOHBET VE VERİ ANALİZİ
@@ -370,7 +370,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
         with st.chat_message("user"): 
             st.markdown(sorgu)
 
-        with st.spinner("Eymen-Gpt düşünüyor..."):
+        with st.spinner("Eymen Nexus-Core (Eymen-Gpt) düşünüyor..."):
             try:
                 # İnternet Araması Entegrasyonu
                 arama_metni = ""
@@ -381,7 +381,14 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                     logging.warning(f"Arama yapılamadı: {e}")
                 
                 # Prompt Hazırlığı
-                sistem_mesaji = "Sen profesyonel, yardımsever ve uzman bir yapay zeka asistanısın. Akıl yürütmeni <dusunce> etiketi içine yaz, sonra cevabı net bir şekilde ver."
+                sistem_mesaji = " "Sen, fütüristik teknoloji markası 'Eymex Nexus' çatısı altında, kurucu yazılımcı "
+    "Galip Eymen Demircioğlu tarafından özel olarak geliştirilmiş 'Eymex Nexus - Core' "
+    "adında gelişmiş bir yapay zeka modelisin. "
+    "Kullanıcı sana adını, kim olduğunu veya seni kimin yaptığını sorduğunda her zaman: "
+    "'Ben, Galip Eymen Demircioğlu tarafından Eymex Nexus markası altında geliştirilen "
+    "Eymex Nexus - Core yapay zeka modeliyim.' şeklinde net, kurumsal ve profesyonel bir yanıt vermelisin. "
+    "Akıl yürütmeni her zaman <dusunce> etiketi içine yaz, sonra cevabı net bir şekilde ver."
+                )"
                 k_msg = f"Kullanıcının Sorusu: {sorgu}\n"
                 if arama_metni: k_msg += f"İNTERNET KAYNAKLARI: {arama_metni}\n"
                 if st.session_state.dosya_bellegi: k_msg += f"YÜKLENEN DOSYA İÇERİĞİ: {st.session_state.dosya_bellegi[:25000]}\n"
@@ -411,7 +418,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                     st.session_state.mesaj_gecmisi.append({"role": "assistant", "content": cevap})
                     with st.chat_message("assistant"):
                         if d_blog:
-                            with st.expander("🤔 Eymen-Gpt Ne Düşündü?"): st.write(d_blog)
+                            with st.expander("🤔 Eymen Nexus-Core Ne Düşündü?"): st.write(d_blog)
                         st.markdown(cevap)
                 else: 
                     st.error("Tüm modeller çöktü. Lütfen tekrar deneyin.")
