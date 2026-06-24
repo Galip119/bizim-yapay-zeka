@@ -370,7 +370,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
         with st.chat_message("user"): 
             st.markdown(sorgu)
 
-        with st.spinner("Yapay zeka düşünüyor..."):
+        with st.spinner("Eymen-Gpt düşünüyor..."):
             try:
                 # İnternet Araması Entegrasyonu
                 arama_metni = ""
@@ -411,7 +411,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                     st.session_state.mesaj_gecmisi.append({"role": "assistant", "content": cevap})
                     with st.chat_message("assistant"):
                         if d_blog:
-                            with st.expander("🤔 Yapay Zeka Ne Düşündü?"): st.write(d_blog)
+                            with st.expander("🤔 Eymen-Gpt Ne Düşündü?"): st.write(d_blog)
                         st.markdown(cevap)
                 else: 
                     st.error("Tüm modeller çöktü. Lütfen tekrar deneyin.")
