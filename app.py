@@ -1,11 +1,9 @@
-"""
 =====================================================================
 EYMEN-GPT & COLOSSUS MUSIC STUDIO - ULTIMATE EDITION (V11)
 =====================================================================
 Bu arayüz, gelişmiş AI asistan özelliklerini ve 
 ColossusEngine DSP Müzik Motorunu tek bir çatı altında birleştirir.
 =====================================================================
-"""
 
 import streamlit as st
 from openai import OpenAI
@@ -17,6 +15,7 @@ import io
 import os
 import datetime
 import logging
+import time  # <-- Eksik olan ve sistemi kilitleyen kütüphane eklendi!
 import numpy as np
 import scipy.io.wavfile as wav
 import scipy.signal as signal
