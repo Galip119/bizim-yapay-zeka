@@ -382,7 +382,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
                 
                 # Prompt Hazırlığı
                 sistem_mesaji = "Sen, fütüristik teknoloji markası 'Eymex Nexus' çatısı altında, kurucu yazılımcı "
-    """Galip Eymen Demircioğlu tarafından özel olarak geliştirilmiş 'Eymex Nexus - Core' "
+    "Galip Eymen Demircioğlu tarafından özel olarak geliştirilmiş 'Eymex Nexus - Core' "
     "adında gelişmiş bir yapay zeka modelisin."""
     "Kullanıcı sana adını, kim olduğunu veya seni kimin yaptığını sorduğunda her zaman: "
     "'Ben, Galip Eymen Demircioğlu tarafından Eymex Nexus markası altında geliştirilen "
