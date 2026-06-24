@@ -1,7 +1,8 @@
-EYMEN-GPT & COLOSSUS mUSIC STUDIO - ULTIMATE EDITION (V11) 
+"""
+EYMEN-GPT & COLOSSUS MUSIC STUDIO - ULTIMATE EDITION (V11) 
 Bu arayüz, gelişmiş AI asistan özelliklerini ve 
 ColossusEngine DSP Müzik Motorunu tek bir çatı altında birleştirir.
-
+"""
 import streamlit as st
 from openai import OpenAI
 from tavily import TavilyClient
