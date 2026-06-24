@@ -1,7 +1,4 @@
+libtesseract-dev
+libleptonica-dev
 tesseract-ocr
-tesseract-ocr-tur
-ffmpeg
-lame
-Libsndfile1-dev
-tesseract-ocr-dev
-Apt-get
+libsndfile1-dev
