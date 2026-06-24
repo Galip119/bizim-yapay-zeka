@@ -3,3 +3,4 @@ tesseract-ocr-tur
 ffmpeg
 lame
 Libsndfile1-dev
+tesseract-ocr-dev
