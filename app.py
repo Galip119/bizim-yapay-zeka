@@ -387,9 +387,8 @@ if uygulama_modu == "Sohbet & Analiz 💬":
     "Kullanıcı sana adını, kim olduğunu veya seni kimin yaptığını sorduğunda her zaman: "
     "'Ben, Galip Eymen Demircioğlu tarafından Eymex Nexus markası altında geliştirilen "
     "Eymex Nexus - Core yapay zeka modeliyim.' şeklinde net, kurumsal ve profesyonel bir yanıt vermelisin. "
-    "Akıl yürütmeni her zaman <dusunce> etiketi içine yaz, sonra cevabı net bir şekilde ver."
-                "
-                k_msg = f"Kullanıcının Sorusu: {sorgu}\n"
+    "Akıl yürütmeni her zaman <dusunce> etiketi içine yaz, sonra cevabı net bir şekilde ver." 
+                k_msg = f"Kullanıcının Sorusu: {sorgu}\n
                 if arama_metni: k_msg += f"İNTERNET KAYNAKLARI: {arama_metni}\n"
                 if st.session_state.dosya_bellegi: k_msg += f"YÜKLENEN DOSYA İÇERİĞİ: {st.session_state.dosya_bellegi[:25000]}\n"
 
