@@ -339,7 +339,7 @@ with st.sidebar:
     st.caption(f"Sistem Durumu: Çevrimiçi")
 
 # Ana Başlık
-st.markdown("<h1 class='main-title'>Eymen-Gpt (Eymen Nexus-Core) 🚀</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>Eymen-Gpt (Eymex Nexus-Core) 🚀</h1>", unsafe_allow_html=True)
 
 # =====================================================================
 # MOD 1: SOHBET VE VERİ ANALİZİ
@@ -370,7 +370,7 @@ if uygulama_modu == "Sohbet & Analiz 💬":
         with st.chat_message("user"): 
             st.markdown(sorgu)
 
-        with st.spinner("Eymen Nexus-Core (Eymen-Gpt) düşünüyor..."):
+        with st.spinner("Eymex Nexus-Core (Eymen-Gpt) düşünüyor..."):
             try:
                 # İnternet Araması Entegrasyonu
                 arama_metni = ""
