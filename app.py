@@ -1,5 +1,5 @@
 """
-EYMEN-GPT & COLOSSUS MUSIC STUDIO - ULTIMATE EDITION (V11.2) 
+Eymex Nexus-Core (V11.2) 
 Bu arayüz, gelişmiş AI asistan özelliklerini ve 
 ColossusEngine DSP Müzik Motorunu tek bir çatı altında birleştirir.
 """
